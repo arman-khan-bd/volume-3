@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=VolZone
+Comment=Transparent screen zone scroll-wheel audio controller
+Exec=volzone %u
+Icon=volzone
+Terminal=false
+Type=Application
+Categories=AudioVideo;Audio;Utility;
+Keywords=volume;audio;sound;wheel;mixer;zones;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true

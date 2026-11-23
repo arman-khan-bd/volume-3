@@ -1,0 +1,105 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VolZone",
+  "version": "0.1.0",
+  "identifier": "com.volzone.app",
+  "build": {
+    "beforeBuildCommand": "npm.cmd run build",
+    "frontendDist": "../ui/dist"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/64x64.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "compression": "lzma",
+        "languages": [
+          "English"
+        ],
+        "installerHooks": "nsis/hooks.nsi",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "VolZone"
+      },
+      "wix": {
+        "language": [
+          "en-US"
+        ]
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    },
+    "macOS": {
+      "frameworks": [],
+      "minimumSystemVersion": "12.0",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.plist",
+      "infoPlist": "Info.plist",
+      "dmg": {
+        "windowSize": {
+          "width": 640,
+          "height": 400
+        },
+        "appPosition": {
+          "x": 160,
+          "y": 190
+        },
+        "applicationFolderPosition": {
+          "x": 480,
+          "y": 190
+        }
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37",
+          "libpipewire-0.3-0 | pulseaudio-utils | alsa-utils",
+          "libx11-6",
+          "libxtst6"
+        ],
+        "desktopTemplate": "volzone.desktop",
+        "section": "sound",
+        "priority": "optional"
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "pipewire",
+          "pulseaudio-utils",
+          "alsa-utils",
+          "libX11",
+          "libXtst"
+        ],
+        "desktopTemplate": "volzone.desktop"
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExMjIzMzQ0NTU2Njc3ODgKUldRYVl1aXRkZDRrOEp4K1Z0UWl4NlFrcnZkMDRhRklhZ1l5U3A3OHZlVkVCS05oYkRjWUt1U0oK",
+      "endpoints": [
+        "https://github.com/volzone/volzone/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

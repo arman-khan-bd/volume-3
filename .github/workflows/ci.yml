@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & Smoke Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install Linux dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libpulse-dev \
+            libasound2-dev \
+            libx11-dev \
+            libxi-dev \
+            libxtst-dev \
+            libxdo-dev \
+            libevdev-dev \
+            xvfb
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Rust formatting
+        run: cargo fmt --all --check --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Clippy linter
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --verbose
+
+      - name: Build and typecheck UI
+        run: npm run build
+
+      - name: Smoke test Tauri build (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: xvfb-run npx @tauri-apps/cli build --no-bundle --debug
+
+      - name: Smoke test Tauri build (Windows & macOS)
+        if: "!startsWith(matrix.os, 'ubuntu')"
+        run: npx @tauri-apps/cli build --no-bundle --debug
+
+      - name: Upload PR build artifact (Windows)
+        if: github.event_name == 'pull_request' && matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: volzone-windows-debug
+          path: src-tauri/target/debug/volzone.exe
+          if-no-files-found: warn
+
+      - name: Upload PR build artifact (macOS)
+        if: github.event_name == 'pull_request' && matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: volzone-macos-debug
+          path: src-tauri/target/debug/volzone
+          if-no-files-found: warn
+
+      - name: Upload PR build artifact (Linux)
+        if: github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')
+        uses: actions/upload-artifact@v4
+        with:
+          name: volzone-linux-debug
+          path: src-tauri/target/debug/volzone
+          if-no-files-found: warn
