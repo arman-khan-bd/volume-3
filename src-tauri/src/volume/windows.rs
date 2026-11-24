@@ -1,19 +1,19 @@
 #![allow(dead_code)]
 
 use std::sync::{Arc, Mutex};
-use windows_core::{implement, Interface, PCWSTR};
 use windows::Win32::Foundation::PROPERTYKEY;
 use windows::Win32::Media::Audio::Endpoints::{
     IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl,
 };
 use windows::Win32::Media::Audio::{
-    eCapture, eConsole, eMultimedia, eRender, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE,
-    EDataFlow, ERole, IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator,
-    IMMNotificationClient, IMMNotificationClient_Impl, ISimpleAudioVolume, MMDeviceEnumerator,
+    eCapture, eConsole, eMultimedia, eRender, EDataFlow, ERole, IAudioSessionControl2,
+    IAudioSessionManager2, IMMDeviceEnumerator, IMMNotificationClient, IMMNotificationClient_Impl,
+    ISimpleAudioVolume, MMDeviceEnumerator, AUDIO_VOLUME_NOTIFICATION_DATA, DEVICE_STATE,
 };
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
+use windows_core::{implement, Interface, PCWSTR};
 
 use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
 use crate::zones::VolumeTarget;
@@ -82,7 +82,9 @@ impl IMMNotificationClient_Impl for DeviceChangeNotifier_Impl {
             // SAFETY: enumerator is a valid COM interface initialized in multithreaded apartment
             let new_endpoint = unsafe {
                 if let Ok(device) = self.enumerator.GetDefaultAudioEndpoint(eRender, eConsole) {
-                    device.Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None).ok()
+                    device
+                        .Activate::<IAudioEndpointVolume>(CLSCTX_ALL, None)
+                        .ok()
                 } else {
                     None
                 }
@@ -227,7 +229,9 @@ impl VolumeBackend for WindowsVolumeController {
             VolumeTarget::App(app_id) => {
                 let apps = self.list_apps()?;
                 apps.into_iter()
-                    .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+                    .find(|a| {
+                        a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+                    })
                     .map(|a| a.volume)
                     .ok_or_else(|| format!("Application audio session '{app_id}' not found"))
             }
@@ -267,7 +271,9 @@ impl VolumeBackend for WindowsVolumeController {
             VolumeTarget::App(app_id) => {
                 let apps = self.list_apps()?;
                 apps.into_iter()
-                    .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+                    .find(|a| {
+                        a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+                    })
                     .map(|a| a.muted)
                     .ok_or_else(|| format!("Application audio session '{app_id}' not found"))
             }
@@ -334,7 +340,10 @@ impl VolumeBackend for WindowsVolumeController {
         }
     }
 
-    fn subscribe_changes(&self, callback: Box<dyn Fn(f32, bool) + Send + Sync>) -> Result<(), String> {
+    fn subscribe_changes(
+        &self,
+        callback: Box<dyn Fn(f32, bool) + Send + Sync>,
+    ) -> Result<(), String> {
         let mut subs = self.subscribers.lock().map_err(|e| e.to_string())?;
         subs.push(callback);
 

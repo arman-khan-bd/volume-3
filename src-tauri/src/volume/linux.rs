@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use std::process::Command;
-use std::sync::{Arc, Mutex};
 use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
 use crate::zones::VolumeTarget;
+use std::process::Command;
+use std::sync::{Arc, Mutex};
 
 type VolumeSubscriber = Box<dyn Fn(f32, bool) + Send + Sync>;
 
@@ -77,7 +77,9 @@ impl VolumeBackend for LinuxVolumeController {
                     VolumeTarget::Master => "@DEFAULT_AUDIO_SINK@",
                     VolumeTarget::Mic => "@DEFAULT_AUDIO_SOURCE@",
                     VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
-                        return Err("Per-app volume under wpctl delegates to pactl sink-inputs".to_string())
+                        return Err(
+                            "Per-app volume under wpctl delegates to pactl sink-inputs".to_string()
+                        )
                     }
                 };
                 let output = Command::new("wpctl")
@@ -128,7 +130,10 @@ impl VolumeBackend for LinuxVolumeController {
                     VolumeTarget::App(app_id) => {
                         let apps = self.list_apps()?;
                         apps.into_iter()
-                            .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+                            .find(|a| {
+                                a.id.eq_ignore_ascii_case(app_id)
+                                    || a.name.eq_ignore_ascii_case(app_id)
+                            })
                             .map(|a| a.volume)
                             .ok_or_else(|| format!("Sink input '{app_id}' not found"))
                     }
@@ -139,7 +144,9 @@ impl VolumeBackend for LinuxVolumeController {
                 let scontrol = match target {
                     VolumeTarget::Master => "Master",
                     VolumeTarget::Mic => "Capture",
-                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => return Err("Per-app volume unsupported under ALSA".to_string()),
+                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
+                        return Err("Per-app volume unsupported under ALSA".to_string())
+                    }
                 };
                 let output = Command::new("amixer")
                     .args(["sget", scontrol])
@@ -159,7 +166,9 @@ impl VolumeBackend for LinuxVolumeController {
                 }
                 Err(format!("Could not parse amixer output: '{stdout}'"))
             }
-            LinuxAudioTool::None => Err("No supported Linux audio backend tool detected".to_string()),
+            LinuxAudioTool::None => {
+                Err("No supported Linux audio backend tool detected".to_string())
+            }
         }
     }
 
@@ -173,7 +182,9 @@ impl VolumeBackend for LinuxVolumeController {
                     VolumeTarget::Master => "@DEFAULT_AUDIO_SINK@",
                     VolumeTarget::Mic => "@DEFAULT_AUDIO_SOURCE@",
                     VolumeTarget::App(app_id) => return self.set_app_volume(app_id, clamped),
-                    VolumeTarget::AppUnderCursor => return self.set_volume(&VolumeTarget::Master, clamped),
+                    VolumeTarget::AppUnderCursor => {
+                        return self.set_volume(&VolumeTarget::Master, clamped)
+                    }
                 };
                 Command::new("wpctl")
                     .args(["set-volume", node, &format!("{clamped:.3}")])
@@ -187,31 +198,31 @@ impl VolumeBackend for LinuxVolumeController {
                 }
                 Ok(())
             }
-            LinuxAudioTool::PulseAudio => {
-                match target {
-                    VolumeTarget::Master => {
-                        Command::new("pactl")
-                            .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{pct}%")])
-                            .status()
-                            .map_err(|e| format!("Failed to set pactl sink volume: {e}"))?;
-                        Ok(())
-                    }
-                    VolumeTarget::Mic => {
-                        Command::new("pactl")
-                            .args(["set-source-volume", "@DEFAULT_SOURCE@", &format!("{pct}%")])
-                            .status()
-                            .map_err(|e| format!("Failed to set pactl source volume: {e}"))?;
-                        Ok(())
-                    }
-                    VolumeTarget::App(app_id) => self.set_app_volume(app_id, clamped),
-                    VolumeTarget::AppUnderCursor => self.set_volume(&VolumeTarget::Master, clamped),
+            LinuxAudioTool::PulseAudio => match target {
+                VolumeTarget::Master => {
+                    Command::new("pactl")
+                        .args(["set-sink-volume", "@DEFAULT_SINK@", &format!("{pct}%")])
+                        .status()
+                        .map_err(|e| format!("Failed to set pactl sink volume: {e}"))?;
+                    Ok(())
                 }
-            }
+                VolumeTarget::Mic => {
+                    Command::new("pactl")
+                        .args(["set-source-volume", "@DEFAULT_SOURCE@", &format!("{pct}%")])
+                        .status()
+                        .map_err(|e| format!("Failed to set pactl source volume: {e}"))?;
+                    Ok(())
+                }
+                VolumeTarget::App(app_id) => self.set_app_volume(app_id, clamped),
+                VolumeTarget::AppUnderCursor => self.set_volume(&VolumeTarget::Master, clamped),
+            },
             LinuxAudioTool::Alsa => {
                 let scontrol = match target {
                     VolumeTarget::Master => "Master",
                     VolumeTarget::Mic => "Capture",
-                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => return Err("Per-app volume unsupported under ALSA".to_string()),
+                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
+                        return Err("Per-app volume unsupported under ALSA".to_string())
+                    }
                 };
                 Command::new("amixer")
                     .args(["sset", scontrol, &format!("{pct}%")])
@@ -219,7 +230,9 @@ impl VolumeBackend for LinuxVolumeController {
                     .map_err(|e| format!("Failed to set amixer volume: {e}"))?;
                 Ok(())
             }
-            LinuxAudioTool::None => Err("No supported Linux audio backend tool detected".to_string()),
+            LinuxAudioTool::None => {
+                Err("No supported Linux audio backend tool detected".to_string())
+            }
         }
     }
 
@@ -229,7 +242,9 @@ impl VolumeBackend for LinuxVolumeController {
                 let node = match target {
                     VolumeTarget::Master => "@DEFAULT_AUDIO_SINK@",
                     VolumeTarget::Mic => "@DEFAULT_AUDIO_SOURCE@",
-                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => return Err("Per-app mute under wpctl not supported".to_string()),
+                    VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
+                        return Err("Per-app mute under wpctl not supported".to_string())
+                    }
                 };
                 let output = Command::new("wpctl")
                     .args(["get-volume", node])
@@ -269,7 +284,9 @@ impl VolumeBackend for LinuxVolumeController {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 Ok(stdout.contains("[off]"))
             }
-            LinuxAudioTool::None => Err("No supported Linux audio backend tool detected".to_string()),
+            LinuxAudioTool::None => {
+                Err("No supported Linux audio backend tool detected".to_string())
+            }
         }
     }
 
@@ -315,11 +332,16 @@ impl VolumeBackend for LinuxVolumeController {
                     .map_err(|e| format!("Failed to set amixer mute: {e}"))?;
                 Ok(())
             }
-            LinuxAudioTool::None => Err("No supported Linux audio backend tool detected".to_string()),
+            LinuxAudioTool::None => {
+                Err("No supported Linux audio backend tool detected".to_string())
+            }
         }
     }
 
-    fn subscribe_changes(&self, callback: Box<dyn Fn(f32, bool) + Send + Sync>) -> Result<(), String> {
+    fn subscribe_changes(
+        &self,
+        callback: Box<dyn Fn(f32, bool) + Send + Sync>,
+    ) -> Result<(), String> {
         let mut subs = self.subscribers.lock().map_err(|e| e.to_string())?;
         subs.push(callback);
         Ok(())
@@ -345,7 +367,11 @@ impl VolumeBackend for LinuxVolumeController {
                 if !current_id.is_empty() {
                     sessions.push(AppAudioSession {
                         id: current_id.clone(),
-                        name: if current_name.is_empty() { format!("Sink Input #{current_id}") } else { current_name.clone() },
+                        name: if current_name.is_empty() {
+                            format!("Sink Input #{current_id}")
+                        } else {
+                            current_name.clone()
+                        },
                         volume: current_vol,
                         muted: current_mute,
                     });
@@ -376,7 +402,11 @@ impl VolumeBackend for LinuxVolumeController {
         if !current_id.is_empty() {
             sessions.push(AppAudioSession {
                 id: current_id.clone(),
-                name: if current_name.is_empty() { format!("Sink Input #{current_id}") } else { current_name },
+                name: if current_name.is_empty() {
+                    format!("Sink Input #{current_id}")
+                } else {
+                    current_name
+                },
                 volume: current_vol,
                 muted: current_mute,
             });

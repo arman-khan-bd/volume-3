@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use std::sync::Arc;
 use crate::volume::{calculate_acceleration, calculate_new_volume, clamp_volume, VolumeBackend};
-use crate::zones::{Zone, VolumeTarget};
+use crate::zones::{VolumeTarget, Zone};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct WheelEvent {

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use std::process::Command;
-use std::sync::{Arc, RwLock};
 use crate::input::{InputHook, WheelEvent};
 use crate::zones::{hit_test, Zone};
+use std::process::Command;
+use std::sync::{Arc, RwLock};
 
 pub struct MacosInputHook {
     active: bool,

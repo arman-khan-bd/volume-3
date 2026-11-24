@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::sync::Mutex;
 use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
 use crate::zones::VolumeTarget;
+use std::sync::Mutex;
 
 type VolumeSubscriber = Box<dyn Fn(f32, bool) + Send + Sync>;
 
@@ -63,11 +63,15 @@ impl VolumeBackend for MockBackend {
             VolumeTarget::App(app_id) => {
                 let apps = self.apps.lock().map_err(|e| e.to_string())?;
                 apps.iter()
-                    .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+                    .find(|a| {
+                        a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+                    })
                     .map(|a| a.volume)
                     .ok_or_else(|| format!("App session '{app_id}' not found"))
             }
-            VolumeTarget::AppUnderCursor => Ok(*self.master_volume.lock().map_err(|e| e.to_string())?),
+            VolumeTarget::AppUnderCursor => {
+                Ok(*self.master_volume.lock().map_err(|e| e.to_string())?)
+            }
         }
     }
 
@@ -99,11 +103,15 @@ impl VolumeBackend for MockBackend {
             VolumeTarget::App(app_id) => {
                 let apps = self.apps.lock().map_err(|e| e.to_string())?;
                 apps.iter()
-                    .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+                    .find(|a| {
+                        a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+                    })
                     .map(|a| a.muted)
                     .ok_or_else(|| format!("App session '{app_id}' not found"))
             }
-            VolumeTarget::AppUnderCursor => Ok(*self.master_muted.lock().map_err(|e| e.to_string())?),
+            VolumeTarget::AppUnderCursor => {
+                Ok(*self.master_muted.lock().map_err(|e| e.to_string())?)
+            }
         }
     }
 
@@ -124,10 +132,9 @@ impl VolumeBackend for MockBackend {
             }
             VolumeTarget::App(app_id) => {
                 let mut apps = self.apps.lock().map_err(|e| e.to_string())?;
-                if let Some(app) = apps
-                    .iter_mut()
-                    .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
-                {
+                if let Some(app) = apps.iter_mut().find(|a| {
+                    a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+                }) {
                     app.muted = muted;
                     Ok(())
                 } else {
@@ -138,7 +145,10 @@ impl VolumeBackend for MockBackend {
         }
     }
 
-    fn subscribe_changes(&self, callback: Box<dyn Fn(f32, bool) + Send + Sync>) -> Result<(), String> {
+    fn subscribe_changes(
+        &self,
+        callback: Box<dyn Fn(f32, bool) + Send + Sync>,
+    ) -> Result<(), String> {
         let mut subs = self.subscribers.lock().map_err(|e| e.to_string())?;
         subs.push(callback);
         Ok(())
@@ -152,10 +162,9 @@ impl VolumeBackend for MockBackend {
     fn set_app_volume(&self, app_id: &str, level: f32) -> Result<(), String> {
         let clamped = clamp_volume(level);
         let mut apps = self.apps.lock().map_err(|e| e.to_string())?;
-        if let Some(app) = apps
-            .iter_mut()
-            .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
-        {
+        if let Some(app) = apps.iter_mut().find(|a| {
+            a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
+        }) {
             app.volume = clamped;
             Ok(())
         } else {

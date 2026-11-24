@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Size, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {
@@ -13,7 +16,12 @@ pub struct Rect {
 
 impl Rect {
     pub const fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn contains(&self, px: i32, py: i32) -> bool {
@@ -306,9 +314,16 @@ impl Zone {
 
                 let (cx, cy) = match (left_corner, right_corner, top_corner, bottom_corner) {
                     (true, _, true, _) => (self.rect.x + r, self.rect.y + r),
-                    (_, true, true, _) => (self.rect.x + (self.rect.width as i32) - r, self.rect.y + r),
-                    (true, _, _, true) => (self.rect.x + r, self.rect.y + (self.rect.height as i32) - r),
-                    (_, true, _, true) => (self.rect.x + (self.rect.width as i32) - r, self.rect.y + (self.rect.height as i32) - r),
+                    (_, true, true, _) => {
+                        (self.rect.x + (self.rect.width as i32) - r, self.rect.y + r)
+                    }
+                    (true, _, _, true) => {
+                        (self.rect.x + r, self.rect.y + (self.rect.height as i32) - r)
+                    }
+                    (_, true, _, true) => (
+                        self.rect.x + (self.rect.width as i32) - r,
+                        self.rect.y + (self.rect.height as i32) - r,
+                    ),
                     _ => return true,
                 };
 
@@ -364,13 +379,7 @@ pub fn hit_test<'a>(
 }
 
 /// Clamps a physical pixel rectangle so it remains visible within the given monitor bounds.
-pub fn clamp_rect_to_bounds(
-    rect: &Rect,
-    mon_x: i32,
-    mon_y: i32,
-    mon_w: u32,
-    mon_h: u32,
-) -> Rect {
+pub fn clamp_rect_to_bounds(rect: &Rect, mon_x: i32, mon_y: i32, mon_w: u32, mon_h: u32) -> Rect {
     let w = rect.width.min(mon_w).max(20);
     let h = rect.height.min(mon_h).max(20);
 
@@ -404,16 +413,24 @@ pub fn adjust_zone_for_monitors(app: &AppHandle, zone: &mut Zone) {
     }
 
     let target_monitor = if let Some(ref m_id) = zone.monitor_id {
-        monitors.iter().find(|m| m.name().map(|n| n == m_id).unwrap_or(false))
+        monitors
+            .iter()
+            .find(|m| m.name().map(|n| n == m_id).unwrap_or(false))
     } else {
         None
     };
 
-    let primary_name = app.primary_monitor().ok().flatten().and_then(|m| m.name().cloned());
+    let primary_name = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .and_then(|m| m.name().cloned());
     let monitor = target_monitor
         .or_else(|| {
             if let Some(ref p_name) = primary_name {
-                monitors.iter().find(|m| m.name().map(|n| n == p_name).unwrap_or(false))
+                monitors
+                    .iter()
+                    .find(|m| m.name().map(|n| n == p_name).unwrap_or(false))
             } else {
                 None
             }
@@ -450,7 +467,8 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
             // and hide it from the Alt+Tab task switcher.
             unsafe {
                 let cur_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-                let mut new_style = cur_style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOOLWINDOW.0 as isize);
+                let mut new_style =
+                    cur_style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOOLWINDOW.0 as isize);
                 if !edit_mode {
                     // WS_EX_TRANSPARENT allows hit-testing to pass through to underlying windows
                     new_style |= 0x00000020; // WS_EX_TRANSPARENT
@@ -467,7 +485,8 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
 
     #[cfg(target_os = "linux")]
     {
-        let session_type = std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string());
+        let session_type =
+            std::env::var("XDG_SESSION_TYPE").unwrap_or_else(|_| "unknown".to_string());
         log::debug!("Linux session type for zone window: {session_type}");
     }
 
@@ -483,8 +502,14 @@ pub fn create_zone_window(
     let label = zone.window_label();
 
     if let Some(existing) = app.get_webview_window(&label) {
-        let _ = existing.set_position(Position::Physical(PhysicalPosition::new(zone.rect.x, zone.rect.y)));
-        let _ = existing.set_size(Size::Physical(PhysicalSize::new(zone.rect.width, zone.rect.height)));
+        let _ = existing.set_position(Position::Physical(PhysicalPosition::new(
+            zone.rect.x,
+            zone.rect.y,
+        )));
+        let _ = existing.set_size(Size::Physical(PhysicalSize::new(
+            zone.rect.width,
+            zone.rect.height,
+        )));
         let _ = apply_platform_window_traits(&existing, edit_mode);
         return Ok(existing);
     }
@@ -503,8 +528,14 @@ pub fn create_zone_window(
         .inner_size(zone.rect.width as f64, zone.rect.height as f64)
         .build()?;
 
-    let _ = window.set_position(Position::Physical(PhysicalPosition::new(zone.rect.x, zone.rect.y)));
-    let _ = window.set_size(Size::Physical(PhysicalSize::new(zone.rect.width, zone.rect.height)));
+    let _ = window.set_position(Position::Physical(PhysicalPosition::new(
+        zone.rect.x,
+        zone.rect.y,
+    )));
+    let _ = window.set_size(Size::Physical(PhysicalSize::new(
+        zone.rect.width,
+        zone.rect.height,
+    )));
 
     if let Err(err) = apply_platform_window_traits(&window, edit_mode) {
         log::warn!("Failed to apply platform window traits to {label}: {err}");

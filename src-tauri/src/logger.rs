@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
+use log::{Level, LevelFilter, Metadata, Record};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use log::{Level, LevelFilter, Metadata, Record};
 
 const MAX_LOG_SIZE_BYTES: u64 = 2 * 1024 * 1024; // 2 MB
 const MAX_BACKUP_FILES: usize = 3;
@@ -252,12 +252,16 @@ mod tests {
 
     #[test]
     fn test_rotating_logger_creation_and_write() {
-        let temp_dir = std::env::temp_dir().join(format!("volzone_test_log_{}", uuid::Uuid::new_v4()));
-        let mut inner = RotatingLoggerInner::new(temp_dir.clone()).expect("Failed to create logger inner");
+        let temp_dir =
+            std::env::temp_dir().join(format!("volzone_test_log_{}", uuid::Uuid::new_v4()));
+        let mut inner =
+            RotatingLoggerInner::new(temp_dir.clone()).expect("Failed to create logger inner");
 
         // Write sample entry
         let sample = "Test log line\n";
-        inner.write_entry(sample).expect("Failed to write log entry");
+        inner
+            .write_entry(sample)
+            .expect("Failed to write log entry");
 
         let log_file = temp_dir.join("volzone.log");
         assert!(log_file.exists());

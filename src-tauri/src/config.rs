@@ -1,8 +1,8 @@
+use crate::zones::{Modifiers, Rect, ScreenEdge, VisualMode, VolumeTarget, Zone, ZoneShape};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use crate::zones::{Modifiers, Rect, ScreenEdge, VisualMode, VolumeTarget, Zone, ZoneShape};
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -69,7 +69,7 @@ pub struct TimeProfile {
     #[serde(default = "default_night_start")]
     pub start_hour: u8, // e.g. 22 (10 PM)
     #[serde(default = "default_night_end")]
-    pub end_hour: u8,   // e.g. 7 (7 AM)
+    pub end_hour: u8, // e.g. 7 (7 AM)
     #[serde(default = "default_night_max_vol")]
     pub max_volume: f32, // e.g. 0.30
 }
@@ -169,35 +169,33 @@ fn default_profile_id() -> String {
 }
 
 fn default_zones() -> Vec<Zone> {
-    vec![
-        Zone {
-            id: "default-top".to_string(),
-            name: "Screen Top Bar".to_string(),
-            monitor_id: None,
-            rect: Rect::new(0, 0, 1920, 24),
-            shape: ZoneShape::ScreenEdgeStrip {
-                edge: ScreenEdge::Top,
-                thickness: 24,
-            },
-            visual_mode: VisualMode::FaintTint,
-            opacity: 0.25,
-            target: VolumeTarget::Master,
-            step: 2.0,
-            acceleration: false,
-            invert: false,
-            modifiers: Modifiers::none(),
-            min_volume: 0.0,
-            max_volume: 1.0,
-            soft_start_limit: None,
-            middle_click_to_mute: false,
-            coarse_modifier: crate::zones::ModifierKey::Shift,
-            fine_modifier: crate::zones::ModifierKey::Ctrl,
-            horizontal_action: crate::zones::HorizontalWheelAction::None,
-            tick_sound: false,
-            pulse_tint: true,
-            enabled: true,
+    vec![Zone {
+        id: "default-top".to_string(),
+        name: "Screen Top Bar".to_string(),
+        monitor_id: None,
+        rect: Rect::new(0, 0, 1920, 24),
+        shape: ZoneShape::ScreenEdgeStrip {
+            edge: ScreenEdge::Top,
+            thickness: 24,
         },
-    ]
+        visual_mode: VisualMode::FaintTint,
+        opacity: 0.25,
+        target: VolumeTarget::Master,
+        step: 2.0,
+        acceleration: false,
+        invert: false,
+        modifiers: Modifiers::none(),
+        min_volume: 0.0,
+        max_volume: 1.0,
+        soft_start_limit: None,
+        middle_click_to_mute: false,
+        coarse_modifier: crate::zones::ModifierKey::Shift,
+        fine_modifier: crate::zones::ModifierKey::Ctrl,
+        horizontal_action: crate::zones::HorizontalWheelAction::None,
+        tick_sound: false,
+        pulse_tint: true,
+        enabled: true,
+    }]
 }
 
 impl Default for Settings {

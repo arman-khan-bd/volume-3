@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size, State, WebviewUrl, WebviewWindowBuilder};
 use crate::config::Settings;
 use crate::input::InputHook;
 use crate::volume::{AppAudioSession, VolumeBackend};
 use crate::zones::{apply_platform_window_traits, create_zone_window, Rect, VolumeTarget, Zone};
+use std::path::PathBuf;
+use std::sync::Mutex;
+use tauri::{
+    AppHandle, Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size, State,
+    WebviewUrl, WebviewWindowBuilder,
+};
 
 mod config;
 mod hotkeys;
@@ -93,7 +96,11 @@ pub fn unpanic_internal(app: &AppHandle, state: &AppState) -> Result<(), String>
     Ok(())
 }
 
-pub fn save_settings_internal(app: &AppHandle, state: &AppState, new_settings: Settings) -> Result<(), String> {
+pub fn save_settings_internal(
+    app: &AppHandle,
+    state: &AppState,
+    new_settings: Settings,
+) -> Result<(), String> {
     config::save_config(&new_settings).map_err(|e| e.to_string())?;
 
     if let Ok(hook) = state.input_hook.lock() {
@@ -120,8 +127,14 @@ pub fn save_settings_internal(app: &AppHandle, state: &AppState, new_settings: S
         }
         let label = zone.window_label();
         if let Some(win) = app.get_webview_window(&label) {
-            let _ = win.set_position(Position::Physical(PhysicalPosition::new(zone.rect.x, zone.rect.y)));
-            let _ = win.set_size(Size::Physical(PhysicalSize::new(zone.rect.width, zone.rect.height)));
+            let _ = win.set_position(Position::Physical(PhysicalPosition::new(
+                zone.rect.x,
+                zone.rect.y,
+            )));
+            let _ = win.set_size(Size::Physical(PhysicalSize::new(
+                zone.rect.width,
+                zone.rect.height,
+            )));
             let _ = apply_platform_window_traits(&win, edit_mode);
         } else {
             let _ = create_zone_window(app, zone, edit_mode);
@@ -198,14 +211,26 @@ fn get_settings(state: State<AppState>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, state: State<AppState>, new_settings: Settings) -> Result<(), String> {
+fn save_settings(
+    app: AppHandle,
+    state: State<AppState>,
+    new_settings: Settings,
+) -> Result<(), String> {
     save_settings_internal(&app, &state, new_settings)
 }
 
 #[tauri::command]
-fn switch_profile(app: AppHandle, state: State<AppState>, profile_id: String) -> Result<Settings, String> {
+fn switch_profile(
+    app: AppHandle,
+    state: State<AppState>,
+    profile_id: String,
+) -> Result<Settings, String> {
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-    let zones_opt = settings.profiles.iter().find(|p| p.id == profile_id).map(|p| p.zones.clone());
+    let zones_opt = settings
+        .profiles
+        .iter()
+        .find(|p| p.id == profile_id)
+        .map(|p| p.zones.clone());
     if let Some(zones) = zones_opt {
         settings.active_profile_id = profile_id;
         settings.zones = zones;
@@ -249,8 +274,13 @@ fn export_config(state: State<AppState>) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn import_config(app: AppHandle, state: State<AppState>, json_str: String) -> Result<Settings, String> {
-    let imported: Settings = serde_json::from_str(&json_str).map_err(|e| format!("Invalid JSON: {e}"))?;
+fn import_config(
+    app: AppHandle,
+    state: State<AppState>,
+    json_str: String,
+) -> Result<Settings, String> {
+    let imported: Settings =
+        serde_json::from_str(&json_str).map_err(|e| format!("Invalid JSON: {e}"))?;
     save_settings_internal(&app, &state, imported.clone())?;
     Ok(imported)
 }
@@ -305,7 +335,11 @@ fn is_autostart_enabled(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn set_autostart_enabled(app: AppHandle, state: State<AppState>, enabled: bool) -> Result<(), String> {
+fn set_autostart_enabled(
+    app: AppHandle,
+    state: State<AppState>,
+    enabled: bool,
+) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     if enabled {
         let _ = app.autolaunch().enable();
@@ -450,7 +484,11 @@ pub fn handle_volume_test(action: &str) -> Result<(), String> {
 
     println!("=== VolZone Volume Test ===");
     println!("Target: Master");
-    println!("Initial Volume: {:.1}% | Muted: {}", initial_vol * 100.0, initial_mute);
+    println!(
+        "Initial Volume: {:.1}% | Muted: {}",
+        initial_vol * 100.0,
+        initial_mute
+    );
     println!("Action: {action}");
 
     match action {
@@ -470,7 +508,11 @@ pub fn handle_volume_test(action: &str) -> Result<(), String> {
 
     let result_vol = backend.get_volume(&target)?;
     let result_mute = backend.get_mute(&target)?;
-    println!("Result Volume: {:.1}% | Muted: {}", result_vol * 100.0, result_mute);
+    println!(
+        "Result Volume: {:.1}% | Muted: {}",
+        result_vol * 100.0,
+        result_mute
+    );
     println!("Status: SUCCESS");
     Ok(())
 }
@@ -488,7 +530,11 @@ fn initialize_zone_windows(app: &AppHandle, settings: &mut Settings) {
 
         match create_zone_window(app, zone, edit_mode) {
             Ok(_) => {
-                log::info!("Created zone window for '{}' (Shape: {:?})", zone.name, zone.shape);
+                log::info!(
+                    "Created zone window for '{}' (Shape: {:?})",
+                    zone.name,
+                    zone.shape
+                );
             }
             Err(err) => {
                 log::error!("Failed to create window for zone '{}': {err}", zone.name);
@@ -780,7 +826,9 @@ fn main() {
                 let _ = handle_for_watchdog.emit("panic-triggered", ());
             });
 
-            log::info!("System tray, zone windows, hotkeys, rotating logs, and safety watchdog active");
+            log::info!(
+                "System tray, zone windows, hotkeys, rotating logs, and safety watchdog active"
+            );
             Ok(())
         })
         .build(tauri::generate_context!())

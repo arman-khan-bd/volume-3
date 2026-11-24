@@ -4,8 +4,8 @@
 pub mod mock;
 pub use mock::MockBackend;
 
-use serde::{Deserialize, Serialize};
 use crate::zones::VolumeTarget;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppAudioSession {
@@ -20,7 +20,10 @@ pub trait VolumeBackend: Send + Sync {
     fn set_volume(&self, target: &VolumeTarget, level: f32) -> Result<(), String>;
     fn get_mute(&self, target: &VolumeTarget) -> Result<bool, String>;
     fn set_mute(&self, target: &VolumeTarget, muted: bool) -> Result<(), String>;
-    fn subscribe_changes(&self, callback: Box<dyn Fn(f32, bool) + Send + Sync>) -> Result<(), String>;
+    fn subscribe_changes(
+        &self,
+        callback: Box<dyn Fn(f32, bool) + Send + Sync>,
+    ) -> Result<(), String>;
     fn list_apps(&self) -> Result<Vec<AppAudioSession>, String>;
     fn set_app_volume(&self, app_id: &str, level: f32) -> Result<(), String>;
 }

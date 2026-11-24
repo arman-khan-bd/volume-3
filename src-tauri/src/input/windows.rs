@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
+use crossbeam_channel::{bounded, Receiver, Sender};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::Instant;
-use crossbeam_channel::{bounded, Receiver, Sender};
 use tauri::{AppHandle, Emitter};
 use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
@@ -22,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::config::{FullscreenRule, OsdConfig, TimeProfile};
 use crate::input::{compute_wheel_volume_delta, InputHook, WheelEvent};
-use crate::osd::{OsdManager, is_foreground_fullscreen};
+use crate::osd::{is_foreground_fullscreen, OsdManager};
 use crate::volume::{
     apply_volume_limits, calculate_acceleration, calculate_new_volume, VolumeBackend,
     WindowsVolumeController,
@@ -394,7 +394,10 @@ impl WindowsInputHook {
                             // Query process ID at cursor coordinates
                             // SAFETY: Getting cursor physical pos
                             let mut pt = POINT::default();
-                            unsafe { let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt); }
+                            unsafe {
+                                let _ =
+                                    windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+                            }
                             if let Some(pid) = get_process_id_at_point(pt.x, pt.y) {
                                 VolumeTarget::App(pid.to_string())
                             } else {
@@ -405,7 +408,8 @@ impl WindowsInputHook {
                     };
 
                     if let Ok(curr_vol) = backend.get_volume(&target) {
-                        let target_vol = calculate_new_volume(curr_vol, step, is_up, zone.invert, 1.0);
+                        let target_vol =
+                            calculate_new_volume(curr_vol, step, is_up, zone.invert, 1.0);
                         let final_vol = apply_volume_limits(
                             target_vol,
                             curr_vol,
@@ -416,7 +420,10 @@ impl WindowsInputHook {
                         );
 
                         if let Err(err) = backend.set_volume(&target, final_vol) {
-                            log::warn!("Worker failed to set volume for zone '{}': {err}", zone.name);
+                            log::warn!(
+                                "Worker failed to set volume for zone '{}': {err}",
+                                zone.name
+                            );
                         } else {
                             // Zone tint pulse feedback
                             if zone.pulse_tint {
@@ -483,14 +490,8 @@ impl InputHook for WindowsInputHook {
             .name("volzone-mouse-hook".to_string())
             .spawn(move || {
                 // SAFETY: Installing thread-level low-level mouse hook
-                let hook = unsafe {
-                    SetWindowsHookExW(
-                        WH_MOUSE_LL,
-                        Some(low_level_mouse_proc),
-                        None,
-                        0,
-                    )
-                };
+                let hook =
+                    unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(low_level_mouse_proc), None, 0) };
 
                 let hook_handle = match hook {
                     Ok(h) => h,

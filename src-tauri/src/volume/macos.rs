@@ -131,7 +131,10 @@ impl VolumeBackend for MacosVolumeController {
         }
     }
 
-    fn subscribe_changes(&self, callback: Box<dyn Fn(f32, bool) + Send + Sync>) -> Result<(), String> {
+    fn subscribe_changes(
+        &self,
+        callback: Box<dyn Fn(f32, bool) + Send + Sync>,
+    ) -> Result<(), String> {
         let mut subs = self.subscribers.lock().map_err(|e| e.to_string())?;
         subs.push(callback);
         Ok(())

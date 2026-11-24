@@ -1,32 +1,56 @@
+use crate::config::Settings;
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Wry,
 };
-use crate::config::Settings;
 
 pub fn setup_tray(app: &AppHandle, settings: &Settings) -> Result<TrayIcon<Wry>, tauri::Error> {
     let settings_item = MenuItem::with_id(app, "settings", "Open Settings...", true, None::<&str>)?;
-    let edit_item = MenuItem::with_id(app, "toggle_edit", "Toggle Edit Mode (Ctrl+Alt+V)", true, None::<&str>)?;
+    let edit_item = MenuItem::with_id(
+        app,
+        "toggle_edit",
+        "Toggle Edit Mode (Ctrl+Alt+V)",
+        true,
+        None::<&str>,
+    )?;
 
     let all_enabled = settings.zones.iter().any(|z| z.enabled);
-    let toggle_zones_label = if all_enabled { "Disable All Zones" } else { "Enable All Zones" };
-    let toggle_zones_item = MenuItem::with_id(app, "toggle_zones", toggle_zones_label, true, None::<&str>)?;
+    let toggle_zones_label = if all_enabled {
+        "Disable All Zones"
+    } else {
+        "Enable All Zones"
+    };
+    let toggle_zones_item =
+        MenuItem::with_id(app, "toggle_zones", toggle_zones_label, true, None::<&str>)?;
 
     // Build Profiles submenu
     let mut profile_items: Vec<MenuItem<Wry>> = Vec::new();
     for p in &settings.profiles {
-        let prefix = if p.id == settings.active_profile_id { "✓ " } else { "   " };
+        let prefix = if p.id == settings.active_profile_id {
+            "✓ "
+        } else {
+            "   "
+        };
         let label = format!("{prefix}{}", p.name);
         let item = MenuItem::with_id(app, format!("profile:{}", p.id), label, true, None::<&str>)?;
         profile_items.push(item);
     }
 
-    let profile_refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = profile_items.iter().map(|item| item as &dyn tauri::menu::IsMenuItem<Wry>).collect();
+    let profile_refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> = profile_items
+        .iter()
+        .map(|item| item as &dyn tauri::menu::IsMenuItem<Wry>)
+        .collect();
     let profiles_sub = Submenu::with_items(app, "Profiles", true, &profile_refs)?;
 
     let sep1 = PredefinedMenuItem::separator(app)?;
-    let panic_item = MenuItem::with_id(app, "panic", "Emergency Panic (Unhook All)", true, None::<&str>)?;
+    let panic_item = MenuItem::with_id(
+        app,
+        "panic",
+        "Emergency Panic (Unhook All)",
+        true,
+        None::<&str>,
+    )?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit VolZone", true, None::<&str>)?;
 
@@ -65,7 +89,12 @@ pub fn setup_tray(app: &AppHandle, settings: &Settings) -> Result<TrayIcon<Wry>,
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 let app = tray.app_handle();
                 let _ = app.emit("tray-open-settings", ());
             }

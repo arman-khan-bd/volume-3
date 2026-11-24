@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
-use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Position, WebviewUrl, WebviewWindowBuilder};
 use crate::config::{OsdConfig, OsdPosition};
+use serde::Serialize;
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, Position, WebviewUrl, WebviewWindowBuilder,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OsdPayload {
@@ -112,10 +114,7 @@ impl OsdManager {
                 let m_size = m.size();
 
                 let (x, y) = match config.position {
-                    OsdPosition::Top => (
-                        m_pos.x + (m_size.width as i32 / 2) - 120,
-                        m_pos.y + 60,
-                    ),
+                    OsdPosition::Top => (m_pos.x + (m_size.width as i32 / 2) - 120, m_pos.y + 60),
                     OsdPosition::Bottom => (
                         m_pos.x + (m_size.width as i32 / 2) - 120,
                         m_pos.y + (m_size.height as i32) - 130,
