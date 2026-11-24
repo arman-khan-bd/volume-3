@@ -21,6 +21,7 @@ pub trait InputHook: Send + Sync {
     fn start(&mut self) -> Result<(), String>;
     fn stop(&mut self) -> Result<(), String>;
     fn update_zones(&self, zones: Vec<Zone>);
+    fn update_osd(&self, _osd: crate::config::OsdConfig) {}
 }
 
 /// Computes the volume delta percentage from a wheel event, taking into account

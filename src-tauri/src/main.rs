@@ -52,8 +52,18 @@ pub fn toggle_edit_mode_internal(app: &AppHandle, state: &AppState) -> Result<bo
     let _ = config::save_config(&settings);
 
     for zone in &settings.zones {
-        if let Some(win) = app.get_webview_window(&zone.window_label()) {
+        if !zone.enabled {
+            continue;
+        }
+        let label = zone.window_label();
+        if let Some(win) = app.get_webview_window(&label) {
             let _ = apply_platform_window_traits(&win, edit_mode);
+            if edit_mode {
+                let _ = win.show();
+                let _ = win.set_always_on_top(true);
+            }
+        } else {
+            let _ = create_zone_window(app, zone, edit_mode);
         }
     }
 
@@ -103,8 +113,16 @@ pub fn save_settings_internal(
 ) -> Result<(), String> {
     config::save_config(&new_settings).map_err(|e| e.to_string())?;
 
+    // 1. Immediately update in-memory state so any new window queries get the new zones
+    {
+        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+        *settings = new_settings.clone();
+    }
+
+    // 2. Update hooks
     if let Ok(hook) = state.input_hook.lock() {
         hook.update_zones(new_settings.zones.clone());
+        hook.update_osd(new_settings.osd.clone());
     }
 
     let edit_mode = new_settings.edit_mode;
@@ -115,12 +133,14 @@ pub fn save_settings_internal(
         .map(|z| z.window_label())
         .collect();
 
+    // 3. Close windows for deleted or disabled zones
     for (label, win) in app.webview_windows() {
         if label.starts_with("zone-") && !active_labels.contains(&label) {
             let _ = win.close();
         }
     }
 
+    // 4. Update or spawn windows for enabled zones
     for zone in &new_settings.zones {
         if !zone.enabled {
             continue;
@@ -136,14 +156,21 @@ pub fn save_settings_internal(
                 zone.rect.height,
             )));
             let _ = apply_platform_window_traits(&win, edit_mode);
+            if edit_mode {
+                let _ = win.show();
+                let _ = win.set_always_on_top(true);
+            }
         } else {
-            let _ = create_zone_window(app, zone, edit_mode);
+            match create_zone_window(app, zone, edit_mode) {
+                Ok(win) => {
+                    let _ = win.show();
+                    log::info!("Created zone window for '{}'", zone.name);
+                }
+                Err(err) => {
+                    log::error!("Failed to create window for zone '{}': {err}", zone.name);
+                }
+            }
         }
-    }
-
-    {
-        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        *settings = new_settings;
     }
 
     let _ = app.emit("settings-updated", ());
@@ -189,14 +216,45 @@ fn set_edit_mode(app: AppHandle, state: State<AppState>, enabled: bool) -> Resul
     let _ = config::save_config(&settings);
 
     for zone in &settings.zones {
-        if let Some(win) = app.get_webview_window(&zone.window_label()) {
+        if !zone.enabled {
+            continue;
+        }
+        let label = zone.window_label();
+        if let Some(win) = app.get_webview_window(&label) {
             let _ = apply_platform_window_traits(&win, enabled);
+            if enabled {
+                let _ = win.show();
+                let _ = win.set_always_on_top(true);
+            }
+        } else {
+            let _ = create_zone_window(&app, zone, enabled);
         }
     }
 
     let _ = app.emit("edit-mode-changed", enabled);
     log::info!("Edit mode set to: {enabled}");
     Ok(enabled)
+}
+
+#[tauri::command]
+fn trigger_osd(
+    app: AppHandle,
+    state: State<AppState>,
+    theme: Option<String>,
+    position: Option<config::OsdPosition>,
+) -> Result<(), String> {
+    let settings = state.settings.lock().map_err(|e| e.to_string())?;
+    let mut osd_cfg = settings.osd.clone();
+    if let Some(t) = theme {
+        osd_cfg.theme = t;
+    }
+    if let Some(p) = position {
+        osd_cfg.position = p;
+    }
+    osd_cfg.enabled = true;
+    let osd_manager = osd::OsdManager::new();
+    osd_manager.show_volume(&app, &osd_cfg, 0.65, false, "VolZone OSD Test");
+    Ok(())
 }
 
 #[tauri::command]
@@ -683,7 +741,8 @@ fn main() {
             test_volume,
             is_elevated_admin,
             check_accessibility_permission,
-            open_accessibility_settings
+            open_accessibility_settings,
+            trigger_osd
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -696,6 +755,7 @@ fn main() {
             let hook: Box<dyn InputHook> = {
                 let mut win_hook = input::WindowsInputHook::new();
                 win_hook.update_zones(settings.zones.clone());
+                win_hook.update_osd(settings.osd.clone());
                 if let Err(err) = win_hook.start_with_app(handle.clone()) {
                     log::error!("Failed to start input hook: {err}");
                 }

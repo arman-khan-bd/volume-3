@@ -62,6 +62,7 @@ pub enum InputEvent {
 struct GlobalHookState {
     zones: RwLock<Vec<Zone>>,
     fullscreen_rule: RwLock<FullscreenRule>,
+    osd_config: RwLock<OsdConfig>,
     sender: Sender<InputEvent>,
 }
 
@@ -206,6 +207,7 @@ impl WindowsInputHook {
         let _ = HOOK_STATE.set(GlobalHookState {
             zones: RwLock::new(Vec::new()),
             fullscreen_rule: RwLock::new(FullscreenRule::default()),
+            osd_config: RwLock::new(OsdConfig::default()),
             sender: sender.clone(),
         });
 
@@ -330,12 +332,17 @@ impl WindowsInputHook {
                     };
 
                     if let Some(zone) = zone {
+                        let osd_cfg = if let Some(state) = HOOK_STATE.get() {
+                            state.osd_config.read().map(|g| g.clone()).unwrap_or_default()
+                        } else {
+                            OsdConfig::default()
+                        };
                         if let Ok(muted) = backend.get_mute(&zone.target) {
                             let _ = backend.set_mute(&zone.target, !muted);
                             if let Ok(vol) = backend.get_volume(&zone.target) {
                                 osd_manager.show_volume(
                                     &app,
-                                    &OsdConfig::default(),
+                                    &osd_cfg,
                                     vol,
                                     !muted,
                                     &zone.name,
@@ -430,10 +437,16 @@ impl WindowsInputHook {
                                 let _ = app.emit("zone-pulse", zone.id.clone());
                             }
 
+                            let osd_cfg = if let Some(state) = HOOK_STATE.get() {
+                                state.osd_config.read().map(|g| g.clone()).unwrap_or_default()
+                            } else {
+                                OsdConfig::default()
+                            };
+
                             // Show OSD feedback
                             osd_manager.show_volume(
                                 &app,
-                                &OsdConfig::default(),
+                                &osd_cfg,
                                 final_vol,
                                 false,
                                 &zone.name,
@@ -565,6 +578,14 @@ impl InputHook for WindowsInputHook {
         if let Some(state) = HOOK_STATE.get() {
             if let Ok(mut guard) = state.zones.write() {
                 *guard = zones;
+            }
+        }
+    }
+
+    fn update_osd(&self, osd: OsdConfig) {
+        if let Some(state) = HOOK_STATE.get() {
+            if let Ok(mut guard) = state.osd_config.write() {
+                *guard = osd;
             }
         }
     }

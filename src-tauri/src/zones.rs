@@ -291,7 +291,11 @@ impl Zone {
     }
 
     pub fn window_label(&self) -> String {
-        format!("zone-{}", self.id)
+        if self.id.starts_with("zone-") {
+            self.id.clone()
+        } else {
+            format!("zone-{}", self.id)
+        }
     }
 
     /// Checks if a physical pixel coordinate (px, py) falls within this zone's shape.
@@ -458,23 +462,36 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
     {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-            WS_EX_TRANSPARENT,
+            GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, SWP_FRAMECHANGED,
+            SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
         };
 
         if let Ok(hwnd) = window.hwnd() {
             let hwnd = HWND(hwnd.0);
-            // SAFETY: Modifying window extended style to prevent window activation/focus stealing
-            // and hide it from the Alt+Tab task switcher.
+            // SAFETY: Modifying window extended style to enable or disable click-through behavior
+            // and update cached OS frame hit-testing structures.
             unsafe {
                 let cur_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
                 let mut new_style =
                     cur_style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOOLWINDOW.0 as isize);
-                if !edit_mode {
-                    // WS_EX_TRANSPARENT allows hit-testing to pass through to underlying windows
+                if edit_mode {
+                    // In edit mode: clear WS_EX_TRANSPARENT so user can click, drag, and resize
+                    new_style &= !(WS_EX_TRANSPARENT.0 as isize);
+                } else {
+                    // Normal operation: WS_EX_TRANSPARENT allows hit-testing to pass through to underlying windows
                     new_style |= WS_EX_TRANSPARENT.0 as isize;
                 }
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
             }
         }
     }

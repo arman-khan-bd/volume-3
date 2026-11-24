@@ -18,9 +18,15 @@ pub enum ConfigError {
 #[serde(rename_all = "snake_case")]
 pub enum OsdPosition {
     #[default]
+    #[serde(alias = "top")]
+    TopCenter,
+    TopLeft,
+    TopRight,
+    #[serde(alias = "bottom")]
+    BottomCenter,
+    BottomLeft,
+    BottomRight,
     Center,
-    Top,
-    Bottom,
     NearCursor,
 }
 
@@ -35,7 +41,7 @@ pub struct OsdConfig {
     #[serde(default = "default_true")]
     pub hide_in_fullscreen: bool,
     #[serde(default = "default_osd_theme")]
-    pub theme: String, // "dark", "light", "auto"
+    pub theme: String, // e.g. "modern_fluent", "cyberpunk", "macos_hud", etc.
 }
 
 const fn default_true() -> bool {
@@ -43,11 +49,11 @@ const fn default_true() -> bool {
 }
 
 const fn default_osd_duration() -> u32 {
-    1000
+    1200
 }
 
 fn default_osd_theme() -> String {
-    "auto".to_string()
+    "modern_fluent".to_string()
 }
 
 impl Default for OsdConfig {
@@ -55,7 +61,7 @@ impl Default for OsdConfig {
         Self {
             enabled: true,
             duration_ms: default_osd_duration(),
-            position: OsdPosition::Center,
+            position: OsdPosition::TopCenter,
             hide_in_fullscreen: true,
             theme: default_osd_theme(),
         }

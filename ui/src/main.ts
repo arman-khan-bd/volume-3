@@ -57,7 +57,15 @@ interface ZoneConfig {
   enabled: boolean;
 }
 
-type OsdPosition = "center" | "top" | "bottom" | "near_cursor";
+type OsdPosition =
+  | "top_center"
+  | "top_left"
+  | "top_right"
+  | "bottom_center"
+  | "bottom_left"
+  | "bottom_right"
+  | "center"
+  | "near_cursor";
 
 interface OsdConfig {
   enabled: boolean;
@@ -145,8 +153,8 @@ function playTickSound() {
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = "sine";
-      osc.frequency.setValueAtTime(1100, audioCtx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(320, audioCtx.currentTime + 0.018);
+      osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(300, audioCtx.currentTime + 0.018);
       gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.018);
       osc.connect(gain);
@@ -159,6 +167,217 @@ function playTickSound() {
   }
 }
 
+/* ==================== OSD TEMPLATES (10 DISTINCT STYLES) ==================== */
+
+const OSD_THEMES: { id: string; name: string; icon: string; desc: string }[] = [
+  { id: "modern_fluent", name: "Modern Fluent", icon: "💎", desc: "Windows 11 Acrylic dark glass with glowing gradient" },
+  { id: "cyberpunk", name: "Cyberpunk Neon", icon: "⚡", desc: "Hi-tech angled HUD with cyan & yellow glow" },
+  { id: "macos_hud", name: "Mac Minimal", icon: "🍎", desc: "Translucent square HUD with 16 dynamic sound dots" },
+  { id: "compact_pill", name: "Compact Pill", icon: "💊", desc: "Dynamic Island floating capsule, ultra-sleek" },
+  { id: "circular_dial", name: "Circular Dial", icon: "🧭", desc: "Radial SVG progress ring with center percentage" },
+  { id: "retro_pixel", name: "Retro Pixel", icon: "👾", desc: "8-bit CRT green phosphor arcade monitor" },
+  { id: "gaming_rgb", name: "Gaming RGB", icon: "🌈", desc: "Animated chroma wave with stealth carbon frame" },
+  { id: "studio_vu", name: "Studio VU", icon: "🎛️", desc: "Pro-audio analog dB markers & multi-color LED ladder" },
+  { id: "neumorphic", name: "Neumorphic Soft", icon: "🔘", desc: "Tactile extruded dark card with sunken track" },
+  { id: "aero_strip", name: "Aero Horizon", icon: "🌊", desc: "Cinematic wide glass bar with audio wave visualizer" },
+];
+
+function getSpeakerIcon(pct: number, muted: boolean): string {
+  if (muted || pct === 0) return "🔇";
+  if (pct < 33) return "🔈";
+  if (pct < 66) return "🔉";
+  return "🔊";
+}
+
+function renderOsdHtml(theme: string, pct: number, muted: boolean, target: string): string {
+  const icon = getSpeakerIcon(pct, muted);
+  const muteBadge = muted ? `<span class="osd-mute-badge">MUTED</span>` : "";
+
+  switch (theme) {
+    case "cyberpunk": {
+      return `
+        <div class="osd-cyberpunk">
+          <div class="osd-row">
+            <span>// ${target.toUpperCase()}</span>
+            <span class="osd-pct">${pct}% ${muteBadge}</span>
+          </div>
+          <div class="osd-track">
+            <div class="osd-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    case "macos_hud": {
+      const activeDots = Math.round((pct / 100) * 16);
+      let dotsHtml = "";
+      for (let i = 0; i < 16; i++) {
+        dotsHtml += `<div class="osd-dot ${i < activeDots && !muted ? "active" : ""}"></div>`;
+      }
+      return `
+        <div class="osd-macos-hud">
+          <div class="osd-speaker-big">${muted ? "🔇" : "🔊"}</div>
+          <div class="osd-dots">${dotsHtml}</div>
+          ${muteBadge}
+        </div>
+      `;
+    }
+
+    case "compact_pill": {
+      return `
+        <div class="osd-compact-pill">
+          <span class="osd-icon">${icon}</span>
+          <div class="osd-track">
+            <div class="osd-fill" style="width: ${pct}%;"></div>
+          </div>
+          <span class="osd-pct">${pct}%</span>
+          ${muteBadge}
+        </div>
+      `;
+    }
+
+    case "circular_dial": {
+      const circumference = 2 * Math.PI * 46;
+      const offset = circumference - (pct / 100) * circumference;
+      return `
+        <div class="osd-circular-dial">
+          <svg viewBox="0 0 120 120">
+            <defs>
+              <linearGradient id="accent-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="100%" stop-color="#818cf8" />
+              </linearGradient>
+            </defs>
+            <circle class="dial-bg" cx="60" cy="60" r="46" />
+            <circle class="dial-bar" cx="60" cy="60" r="46"
+              stroke-dasharray="${circumference}"
+              stroke-dashoffset="${offset}" />
+          </svg>
+          <div class="dial-center">
+            <div class="dial-icon">${icon}</div>
+            <div class="dial-pct">${pct}%</div>
+            ${muteBadge}
+          </div>
+        </div>
+      `;
+    }
+
+    case "retro_pixel": {
+      const totalBlocks = 14;
+      const activeBlocks = Math.round((pct / 100) * totalBlocks);
+      let blocksHtml = "";
+      for (let i = 0; i < totalBlocks; i++) {
+        blocksHtml += `<div class="osd-block ${i < activeBlocks && !muted ? "active" : ""}"></div>`;
+      }
+      return `
+        <div class="osd-retro-pixel">
+          <div class="osd-row">
+            <span>VOL: ${target}</span>
+            <span>${pct}% ${muted ? "[MUTED]" : ""}</span>
+          </div>
+          <div class="osd-blocks">${blocksHtml}</div>
+        </div>
+      `;
+    }
+
+    case "gaming_rgb": {
+      return `
+        <div class="osd-gaming-rgb">
+          <div class="osd-row">
+            <span>⚡ ${target}</span>
+            <span style="color: #00eeff; font-family: monospace;">${pct}%</span>
+            ${muteBadge}
+          </div>
+          <div class="osd-track">
+            <div class="osd-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    case "studio_vu": {
+      const totalBars = 20;
+      const activeBars = Math.round((pct / 100) * totalBars);
+      let barsHtml = "";
+      for (let i = 0; i < totalBars; i++) {
+        let colorClass = "";
+        if (i < activeBars && !muted) {
+          if (i < 13) colorClass = "active-green";
+          else if (i < 17) colorClass = "active-amber";
+          else colorClass = "active-red";
+        }
+        barsHtml += `<div class="vu-bar ${colorClass}"></div>`;
+      }
+      return `
+        <div class="osd-studio-vu">
+          <div class="vu-labels">
+            <span>-40dB</span><span>-20dB</span><span>-6dB</span><span>0dB</span><span>+6dB</span>
+          </div>
+          <div class="vu-meter">${barsHtml}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; margin-top: 6px;">
+            <span>${target}</span>
+            <span style="font-weight: bold; color: #38bdf8;">${pct}% ${muteBadge}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    case "neumorphic": {
+      return `
+        <div class="osd-neumorphic">
+          <div class="osd-row">
+            <span>${target}</span>
+            <span style="color: #f59e0b; font-family: monospace;">${pct}%</span>
+            ${muteBadge}
+          </div>
+          <div class="osd-track">
+            <div class="osd-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    case "aero_strip": {
+      const waveBars = 16;
+      let wavesHtml = "";
+      for (let i = 0; i < waveBars; i++) {
+        const height = Math.max(3, Math.round(Math.sin((i / waveBars) * Math.PI) * 14 * (pct / 100)));
+        wavesHtml += `<div class="osd-wave-bar" style="height: ${height}px;"></div>`;
+      }
+      return `
+        <div class="osd-aero-strip">
+          <div class="osd-row">
+            <span style="font-size: 13px; font-weight: 600;">${target}</span>
+            <div class="osd-waves">${wavesHtml}</div>
+            <span style="font-weight: bold; font-family: monospace; color: #38bdf8;">${pct}%</span>
+            ${muteBadge}
+          </div>
+          <div class="osd-track" style="height: 6px; background: rgba(255,255,255,0.15); border-radius: 999px; overflow: hidden;">
+            <div class="osd-fill" style="width: ${pct}%; height: 100%; background: #38bdf8; border-radius: 999px;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    case "modern_fluent":
+    default: {
+      return `
+        <div class="osd-modern-fluent">
+          <div class="osd-row">
+            <span class="osd-icon">${icon}</span>
+            <span class="osd-title">${target}</span>
+            <span class="osd-pct">${pct}%</span>
+            ${muteBadge}
+          </div>
+          <div class="osd-track">
+            <div class="osd-fill" style="width: ${pct}%;"></div>
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
 /* ==================== OSD OVERLAY VIEW ==================== */
 
 function initOsdView() {
@@ -166,53 +385,26 @@ function initOsdView() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
 
-  appEl.innerHTML = `
-    <div class="osd-card" id="osd-card" style="opacity: 0;">
-      <div class="osd-header">
-        <span class="osd-target" id="osd-target">Master</span>
-        <span class="osd-val" id="osd-val">0%</span>
-        <span class="osd-mute-badge" id="osd-mute" style="display: none;">MUTED</span>
-      </div>
-      <div class="osd-bar-bg">
-        <div class="osd-bar-fill" id="osd-bar" style="width: 0%;"></div>
-      </div>
-    </div>
-  `;
-
-  const card = document.getElementById("osd-card")!;
-  const targetEl = document.getElementById("osd-target")!;
-  const valEl = document.getElementById("osd-val")!;
-  const muteEl = document.getElementById("osd-mute")!;
-  const barEl = document.getElementById("osd-bar")!;
-
+  appEl.innerHTML = `<div id="osd-root"></div>`;
+  const root = document.getElementById("osd-root")!;
   let hideTimer: number | null = null;
 
   if (window.__TAURI__?.event) {
     window.__TAURI__.event.listen<OsdPayload>("osd-show", (evt) => {
       const payload = evt.payload;
-      const pct = Math.round(payload.volume * 100);
+      const pct = Math.min(100, Math.max(0, Math.round(payload.volume * 100)));
+      const theme = payload.theme || "modern_fluent";
 
-      targetEl.textContent = payload.target || "Master";
-      valEl.textContent = `${pct}%`;
-      barEl.style.width = `${Math.min(100, Math.max(0, pct))}%`;
-
-      if (payload.muted) {
-        muteEl.style.display = "inline-block";
-        barEl.classList.add("muted");
-      } else {
-        muteEl.style.display = "none";
-        barEl.classList.remove("muted");
-      }
-
-      card.style.opacity = "1";
+      root.innerHTML = renderOsdHtml(theme, pct, payload.muted, payload.target || "Master");
+      root.classList.add("visible");
 
       if (hideTimer !== null) {
         window.clearTimeout(hideTimer);
       }
 
       hideTimer = window.setTimeout(() => {
-        card.style.opacity = "0";
-      }, payload.duration_ms || 1000);
+        root.classList.remove("visible");
+      }, payload.duration_ms || 1200);
     });
   }
 }
@@ -231,8 +423,9 @@ async function initZoneOverlay(zoneId: string) {
         <span>Y:</span><input type="number" id="in-y" />
         <span>W:</span><input type="number" id="in-w" />
         <span>H:</span><input type="number" id="in-h" />
-        <button class="lock-btn" id="lock-btn" title="Exit edit mode">Lock</button>
+        <button class="lock-btn" id="lock-btn" title="Exit Edit Mode">Lock</button>
       </div>
+      <div class="zone-center-title" id="zone-center-title"></div>
       <div class="resize-handle handle-nw" data-handle="nw"></div>
       <div class="resize-handle handle-n" data-handle="n"></div>
       <div class="resize-handle handle-ne" data-handle="ne"></div>
@@ -250,6 +443,7 @@ async function initZoneOverlay(zoneId: string) {
   const inW = document.getElementById("in-w") as HTMLInputElement;
   const inH = document.getElementById("in-h") as HTMLInputElement;
   const lockBtn = document.getElementById("lock-btn")!;
+  const centerTitle = document.getElementById("zone-center-title")!;
 
   let currentZone: ZoneConfig | null = null;
   let isEditMode = false;
@@ -281,6 +475,8 @@ async function initZoneOverlay(zoneId: string) {
     inY.value = `${currentZone.rect.y}`;
     inW.value = `${currentZone.rect.width}`;
     inH.value = `${currentZone.rect.height}`;
+
+    centerTitle.textContent = `${currentZone.name} (${currentZone.rect.width} × ${currentZone.rect.height})`;
 
     container.style.setProperty("--zone-opacity", `${currentZone.opacity}`);
     container.className = "";
@@ -315,8 +511,8 @@ async function initZoneOverlay(zoneId: string) {
   async function updateRect(x: number, y: number, w: number, h: number) {
     if (!currentZone || !window.__TAURI__?.core) return;
 
-    // Edge snapping threshold: 15px
-    const snap = 15;
+    // Edge snapping threshold: 16px
+    const snap = 16;
     let snX = x;
     let snY = y;
     if (Math.abs(snX) < snap) snX = 0;
@@ -325,8 +521,8 @@ async function initZoneOverlay(zoneId: string) {
     const newRect: Rect = {
       x: Math.round(snX),
       y: Math.round(snY),
-      width: Math.max(40, Math.round(w)),
-      height: Math.max(20, Math.round(h)),
+      width: Math.max(50, Math.round(w)),
+      height: Math.max(24, Math.round(h)),
     };
 
     currentZone.rect = newRect;
@@ -334,6 +530,7 @@ async function initZoneOverlay(zoneId: string) {
     inY.value = `${newRect.y}`;
     inW.value = `${newRect.width}`;
     inH.value = `${newRect.height}`;
+    centerTitle.textContent = `${currentZone.name} (${newRect.width} × ${newRect.height})`;
 
     await window.__TAURI__.core.invoke("update_zone_rect", {
       zoneId,
@@ -351,8 +548,8 @@ async function initZoneOverlay(zoneId: string) {
   const onInputChange = () => {
     const x = parseInt(inX.value) || 0;
     const y = parseInt(inY.value) || 0;
-    const w = parseInt(inW.value) || 40;
-    const h = parseInt(inH.value) || 20;
+    const w = parseInt(inW.value) || 50;
+    const h = parseInt(inH.value) || 24;
     updateRect(x, y, w, h);
   };
 
@@ -370,20 +567,11 @@ async function initZoneOverlay(zoneId: string) {
     let { x, y, width, height } = currentZone.rect;
 
     switch (e.key) {
-      case "ArrowUp":
-        y -= delta;
-        break;
-      case "ArrowDown":
-        y += delta;
-        break;
-      case "ArrowLeft":
-        x -= delta;
-        break;
-      case "ArrowRight":
-        x += delta;
-        break;
-      default:
-        return;
+      case "ArrowUp": y -= delta; break;
+      case "ArrowDown": y += delta; break;
+      case "ArrowLeft": x -= delta; break;
+      case "ArrowRight": x += delta; break;
+      default: return;
     }
 
     e.preventDefault();
@@ -476,7 +664,6 @@ async function initZoneOverlay(zoneId: string) {
 
     window.__TAURI__.event.listen<string>("zone-pulse", (evt) => {
       if (evt.payload === zoneId) {
-        // Visual tint pulse
         container.classList.add("pulse-active");
         if (pulseTimer !== null) {
           window.clearTimeout(pulseTimer);
@@ -485,7 +672,6 @@ async function initZoneOverlay(zoneId: string) {
           container.classList.remove("pulse-active");
         }, 220);
 
-        // Optional mechanical tick sound
         if (currentZone?.tick_sound) {
           playTickSound();
         }
@@ -496,7 +682,9 @@ async function initZoneOverlay(zoneId: string) {
   await loadConfig();
 }
 
-/* ==================== SETTINGS WINDOW VIEW ==================== */
+/* ============================================================
+   SETTINGS WINDOW VIEW (OVERHAULED MODERN UI)
+   ============================================================ */
 
 async function initSettingsView() {
   document.body.classList.add("settings-view");
@@ -505,78 +693,79 @@ async function initSettingsView() {
 
   appEl.innerHTML = `
     <div class="settings-container">
-      <div class="settings-header">
-        <h1>VolZone Settings</h1>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn btn-primary" id="toggle-edit-btn">Toggle Edit Mode</button>
-          <button class="theme-toggle-btn" id="theme-btn">Light Theme</button>
+      <!-- Modern Header -->
+      <div class="app-header">
+        <div class="brand-section">
+          <div class="brand-icon">🔊</div>
+          <div class="brand-text">
+            <h1>VolZone</h1>
+            <span>Screen Zone Scroll-Wheel Audio Controller</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="edit-mode-pill" id="header-edit-pill">
+            <span class="pill-dot"></span>
+            <span id="header-edit-label">Edit Mode: Off</span>
+          </button>
+          <button class="btn" id="theme-btn">☀️ Light</button>
         </div>
       </div>
 
       <!-- Emergency Panic Alert Banner -->
       <div class="panic-banner" id="panic-banner" style="display: none;">
-        <span id="panic-msg">⚠️ EMERGENCY PANIC ACTIVE: Wheel hooks disengaged for system safety.</span>
-        <button class="btn btn-primary" id="unpanic-btn">Resume Wheel Hooks</button>
+        <span>⚠️ EMERGENCY PANIC: Wheel hooks disengaged for safety.</span>
+        <button class="btn btn-primary" id="unpanic-btn">Resume Hooks</button>
       </div>
 
-      <!-- Profiles Manager -->
+      <!-- Live Master Volume Bar -->
       <div class="card">
         <div class="card-title">
-          <span>Active Profile</span>
-          <button class="btn btn-icon" id="save-new-profile-btn">+ Save As Profile</button>
+          <span>Master Output Control</span>
+          <span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">Real-time Audio Engine</span>
         </div>
-        <div class="form-row">
-          <div class="form-group" style="flex: 2;">
-            <select class="form-control" id="profile-select"></select>
-          </div>
-          <div class="form-group" style="flex: 1;">
-            <button class="btn btn-danger btn-icon" id="delete-profile-btn" style="width: 100%; height: 35px;">Delete Profile</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Live Volume & Quick Test -->
-      <div class="card">
-        <div class="card-title">Live Volume Preview & Test</div>
-        <div class="slider-container form-group">
-          <input type="range" id="live-vol-slider" min="0" max="100" value="50" />
-          <span id="live-vol-label" style="font-size: 13px; font-weight: bold; width: 45px;">50%</span>
+        <div class="volume-strip">
+          <button class="vol-icon-btn" id="live-mute-btn" title="Toggle Mute">🔊</button>
+          <input type="range" class="vol-slider" id="live-vol-slider" min="0" max="100" value="50" />
+          <span class="vol-label" id="live-vol-label">50%</span>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn" id="test-up-btn">Step Up (+5%)</button>
-          <button class="btn" id="test-down-btn">Step Down (-5%)</button>
-          <button class="btn" id="test-mute-btn">Toggle Mute</button>
+          <button class="btn" id="vol-step-up-btn">Step Up (+5%)</button>
+          <button class="btn" id="vol-step-down-btn">Step Down (-5%)</button>
+          <button class="btn" id="vol-toggle-mute-btn">Toggle Mute</button>
         </div>
       </div>
 
-      <!-- Zones Manager -->
+      <!-- Screen Zones Section -->
       <div class="card">
         <div class="card-title">
-          <span>Screen Zones</span>
-          <button class="btn btn-primary btn-icon" id="add-zone-btn">+ Add Zone</button>
+          <span>Screen Zones (<span id="zone-count-badge">0</span>)</span>
+          <button class="btn btn-primary" id="add-zone-btn">+ Add Screen Zone</button>
         </div>
-        <div id="zone-list-container"></div>
+        <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 12px 0;">
+          Hover your mouse pointer over any defined screen zone and scroll your wheel to adjust volume instantly.
+        </p>
+        <div class="zone-grid" id="zone-grid-container"></div>
       </div>
 
-      <!-- Selected Zone Inspector -->
-      <div class="card" id="zone-inspector" style="display: none;">
+      <!-- Zone Inspector Modal / Card -->
+      <div class="card" id="zone-inspector" style="display: none; border-color: var(--accent);">
         <div class="card-title">
-          <span id="inspector-title">Zone Properties</span>
+          <span id="inspector-title" style="color: var(--accent);">Zone Inspector</span>
           <div style="display: flex; gap: 6px;">
-            <button class="btn btn-icon" id="dup-zone-btn">Duplicate</button>
-            <button class="btn btn-danger btn-icon" id="del-zone-btn">Delete</button>
+            <button class="btn" id="dup-zone-btn">Duplicate</button>
+            <button class="btn btn-danger" id="del-zone-btn">Delete</button>
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label>Name</label>
+            <label>Zone Name</label>
             <input type="text" class="form-control" id="z-name" />
           </div>
           <div class="form-group">
             <label>Target Audio Device</label>
             <select class="form-control" id="z-target">
-              <option value="master">Master Output</option>
+              <option value="master">Master Volume</option>
               <option value="mic">Microphone Input</option>
               <option value="app_under_cursor">App Under Cursor</option>
               <option value="app">Specific Application</option>
@@ -601,15 +790,15 @@ async function initSettingsView() {
           </div>
           <div class="form-group" id="radius-group" style="display: none;">
             <label>Corner Radius (px)</label>
-            <input type="number" class="form-control" id="z-radius" min="2" max="100" value="8" />
+            <input type="number" class="form-control" id="z-radius" min="2" max="100" value="12" />
           </div>
           <div class="form-group" id="strip-group" style="display: none;">
             <label>Screen Edge</label>
             <select class="form-control" id="z-edge">
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="left">Left</option>
-              <option value="right">Right</option>
+              <option value="top">Top Edge</option>
+              <option value="bottom">Bottom Edge</option>
+              <option value="left">Left Edge</option>
+              <option value="right">Right Edge</option>
             </select>
           </div>
         </div>
@@ -618,7 +807,7 @@ async function initSettingsView() {
           <div class="form-group">
             <label>Visual Mode</label>
             <select class="form-control" id="z-mode">
-              <option value="invisible">Invisible</option>
+              <option value="invisible">Invisible (Stealth)</option>
               <option value="faint_tint">Faint Tint</option>
               <option value="outline_on_hover">Outline on Hover</option>
               <option value="always_visible">Always Visible</option>
@@ -626,49 +815,46 @@ async function initSettingsView() {
           </div>
           <div class="form-group">
             <label>Opacity (<span id="opacity-val">25%</span>)</label>
-            <input type="range" class="form-control" id="z-opacity" min="0" max="100" value="25" />
+            <input type="range" class="vol-slider" id="z-opacity" min="0" max="100" value="25" />
           </div>
         </div>
 
-        <!-- Step & Tuning -->
         <div class="form-row">
           <div class="form-group">
             <label>Step Size (<span id="step-val">2%</span>)</label>
-            <input type="range" class="form-control" id="z-step" min="1" max="15" value="2" />
+            <input type="range" class="vol-slider" id="z-step" min="1" max="15" value="2" />
           </div>
           <div class="form-group">
-            <label>Horizontal Tilt Action</label>
+            <label>Horizontal Tilt Wheel Action</label>
             <select class="form-control" id="z-horiz-action">
               <option value="none">None / Default</option>
-              <option value="media_track">Previous / Next Media Track</option>
+              <option value="media_track">Next / Previous Media Track</option>
               <option value="balance">Audio Balance</option>
             </select>
           </div>
         </div>
 
-        <!-- Volume Limits & Soft Start -->
         <div class="form-row">
           <div class="form-group">
             <label>Min Volume Limit (<span id="min-vol-val">0%</span>)</label>
-            <input type="range" class="form-control" id="z-min-vol" min="0" max="100" value="0" />
+            <input type="range" class="vol-slider" id="z-min-vol" min="0" max="100" value="0" />
           </div>
           <div class="form-group">
             <label>Max Volume Limit (<span id="max-vol-val">100%</span>)</label>
-            <input type="range" class="form-control" id="z-max-vol" min="0" max="100" value="100" />
+            <input type="range" class="vol-slider" id="z-max-vol" min="0" max="100" value="100" />
           </div>
           <div class="form-group">
             <label>Soft Start Max Jump</label>
             <select class="form-control" id="z-soft-start">
               <option value="none">Disabled (No Limit)</option>
-              <option value="0.05">5% max jump per event</option>
-              <option value="0.08">8% max jump per event</option>
-              <option value="0.10">10% max jump per event</option>
-              <option value="0.15">15% max jump per event</option>
+              <option value="0.05">5% max jump</option>
+              <option value="0.08">8% max jump</option>
+              <option value="0.10">10% max jump</option>
+              <option value="0.15">15% max jump</option>
             </select>
           </div>
         </div>
 
-        <!-- Modifiers Tuning -->
         <div class="form-row">
           <div class="form-group">
             <label>Coarse Modifier (2.5x step)</label>
@@ -690,38 +876,106 @@ async function initSettingsView() {
           </div>
         </div>
 
-        <!-- Toggles -->
-        <div class="switch-group" style="flex-wrap: wrap; gap: 12px; margin-top: 10px;">
-          <label><input type="checkbox" id="z-accel" /> Wheel Acceleration</label>
-          <label><input type="checkbox" id="z-invert" /> Invert Scroll</label>
-          <label><input type="checkbox" id="z-middle-mute" /> Middle-Click Mute</label>
-          <label><input type="checkbox" id="z-pulse-tint" /> Pulse Tint on Change</label>
-          <label><input type="checkbox" id="z-tick-sound" /> Mechanical Tick Sound</label>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 14px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="z-accel" /> Wheel Acceleration
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="z-invert" /> Invert Direction
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="z-middle-mute" /> Middle-Click to Mute
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="z-pulse-tint" /> Pulse Tint on Change
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+            <input type="checkbox" id="z-tick-sound" /> Mechanical Tick Sound
+          </label>
         </div>
       </div>
 
-      <!-- Global Rules & Automation -->
-      <div class="card">
-        <div class="card-title">Rules & Auto-Suppression</div>
-        <div class="switch-group">
-          <span>Auto-disable zones when games / fullscreen apps are focused</span>
-          <input type="checkbox" id="g-fullscreen-disable" />
-        </div>
-        <div class="switch-group" style="margin-top: 6px;">
-          <span>Run with Administrator Privileges (Elevated UIPI hook)</span>
-          <input type="checkbox" id="g-admin" />
-        </div>
-        <div class="switch-group" style="margin-top: 6px;">
-          <span>Start VolZone automatically at system login</span>
-          <input type="checkbox" id="g-autostart" />
-        </div>
-      </div>
-
-      <!-- Time Profile (Night Mode) -->
+      <!-- On-Screen Display (OSD) Studio with 10 Themes & Position Set -->
       <div class="card">
         <div class="card-title">
-          <span>Time-Based Profile (Night Max Volume)</span>
-          <label style="font-size: 13px;"><input type="checkbox" id="night-enable" /> Enable</label>
+          <span>On-Screen Display (OSD) Studio</span>
+          <button class="btn btn-primary" id="test-osd-btn">🚀 Test OSD On Screen</button>
+        </div>
+
+        <div class="switch-row">
+          <label for="g-osd">Show On-Screen Display Overlay</label>
+          <input type="checkbox" class="toggle-switch" id="g-osd" />
+        </div>
+        <div class="switch-row">
+          <label for="g-osd-hide-fullscreen">Hide OSD in Fullscreen Applications (Games/Movies)</label>
+          <input type="checkbox" class="toggle-switch" id="g-osd-hide-fullscreen" />
+        </div>
+
+        <!-- 10 OSD Themes Visual Gallery -->
+        <label style="display: block; font-size: 13px; font-weight: 700; margin: 18px 0 10px 0;">
+          Select Theme Style (10 Available)
+        </label>
+        <div class="osd-themes-grid" id="osd-themes-grid"></div>
+
+        <!-- Position Set & Duration -->
+        <div class="position-grid-container">
+          <div class="position-matrix" id="pos-matrix">
+            <button class="pos-btn" data-pos="top_left" title="Top Left">TL</button>
+            <button class="pos-btn" data-pos="top_center" title="Top Center">TC</button>
+            <button class="pos-btn" data-pos="top_right" title="Top Right">TR</button>
+            <button class="pos-btn" data-pos="near_cursor" title="Near Mouse Cursor" style="grid-column: 1 / span 3; font-size: 10px;">Near Cursor</button>
+            <button class="pos-btn" data-pos="center" title="Screen Center" style="grid-column: 1 / span 3; font-size: 10px;">Center</button>
+            <button class="pos-btn" data-pos="bottom_left" title="Bottom Left">BL</button>
+            <button class="pos-btn" data-pos="bottom_center" title="Bottom Center">BC</button>
+            <button class="pos-btn" data-pos="bottom_right" title="Bottom Right">BR</button>
+          </div>
+          <div class="pos-details">
+            <div class="form-group">
+              <label>Current Position: <strong id="pos-label" style="color: var(--accent);">Top Center</strong></label>
+            </div>
+            <div class="form-group">
+              <label>OSD Display Duration (<span id="osd-dur-val">1200ms</span>)</label>
+              <input type="range" class="vol-slider" id="g-osd-dur" min="400" max="4000" step="100" value="1200" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Live In-Settings Preview Box -->
+        <div class="osd-live-preview-box" id="osd-live-preview"></div>
+      </div>
+
+      <!-- Profiles & Rules -->
+      <div class="card">
+        <div class="card-title">
+          <span>Profiles & Automation Rules</span>
+          <button class="btn" id="save-new-profile-btn">+ Save As Profile</button>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label>Active Profile</label>
+            <select class="form-control" id="profile-select"></select>
+          </div>
+          <div class="form-group" style="flex: 1; align-self: flex-end;">
+            <button class="btn btn-danger" id="delete-profile-btn" style="width: 100%; height: 38px;">Delete Profile</button>
+          </div>
+        </div>
+        <div class="switch-row">
+          <label for="g-fullscreen-disable">Auto-disable zones when games / fullscreen apps are focused</label>
+          <input type="checkbox" class="toggle-switch" id="g-fullscreen-disable" />
+        </div>
+        <div class="switch-row">
+          <label for="g-autostart">Start VolZone automatically on system login</label>
+          <input type="checkbox" class="toggle-switch" id="g-autostart" />
+        </div>
+      </div>
+
+      <!-- Night Mode (Time Profile) -->
+      <div class="card">
+        <div class="card-title">
+          <span>Night Mode (Volume Limiter)</span>
+          <label style="font-size: 13px; font-weight: normal; cursor: pointer;">
+            <input type="checkbox" id="night-enable" /> Enable
+          </label>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -733,48 +987,20 @@ async function initSettingsView() {
             <input type="number" class="form-control" id="night-end" min="0" max="23" value="7" />
           </div>
           <div class="form-group">
-            <label>Night Cap (<span id="night-cap-val">30%</span>)</label>
-            <input type="range" class="form-control" id="night-cap" min="5" max="100" value="30" />
+            <label>Night Max Cap (<span id="night-cap-val">30%</span>)</label>
+            <input type="range" class="vol-slider" id="night-cap" min="5" max="100" value="30" />
           </div>
         </div>
       </div>
 
-      <!-- On-Screen Display (OSD) -->
-      <div class="card">
-        <div class="card-title">On-Screen Display (OSD)</div>
-        <div class="switch-group">
-          <span>Show On-Screen Display (OSD) Overlay</span>
-          <input type="checkbox" id="g-osd" />
-        </div>
-        <div class="switch-group" style="margin-top: 4px;">
-          <span>Hide OSD in Fullscreen Applications</span>
-          <input type="checkbox" id="g-osd-hide-fullscreen" />
-        </div>
-        <div class="form-row" style="margin-top: 10px;">
-          <div class="form-group">
-            <label>OSD Position</label>
-            <select class="form-control" id="g-osd-pos">
-              <option value="center">Center</option>
-              <option value="top">Top</option>
-              <option value="bottom">Bottom</option>
-              <option value="near_cursor">Near Cursor</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>OSD Duration (ms)</label>
-            <input type="number" class="form-control" id="g-osd-dur" min="400" max="5000" step="100" />
-          </div>
-        </div>
-      </div>
-
-      <!-- Configuration Import / Export / Reset -->
+      <!-- Configuration & Diagnostics -->
       <div class="card">
         <div class="card-title">Configuration Management & Safety</div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button class="btn" id="export-btn">Export JSON</button>
           <button class="btn" id="import-btn">Import JSON</button>
           <button class="btn" id="open-logs-btn">Open Logs Folder</button>
-          <button class="btn btn-danger" id="panic-now-btn">Emergency Panic (Unhook All)</button>
+          <button class="btn btn-danger" id="panic-now-btn">Emergency Panic (Unhook)</button>
           <button class="btn btn-danger" id="reset-btn">Reset to Defaults</button>
         </div>
       </div>
@@ -806,8 +1032,10 @@ async function initSettingsView() {
       } catch {
         audioApps = [];
       }
+      renderHeader();
       renderProfiles();
-      renderZoneList();
+      renderZoneGrid();
+      renderOsdStudio();
       renderGlobalPreferences();
       updateVolumePreview();
 
@@ -815,9 +1043,7 @@ async function initSettingsView() {
         const autostart = await window.__TAURI__.core.invoke<boolean>("is_autostart_enabled");
         const autoEl = document.getElementById("g-autostart") as HTMLInputElement;
         if (autoEl) autoEl.checked = autostart;
-      } catch (e) {
-        console.warn("Could not query autostart status:", e);
-      }
+      } catch {}
 
       try {
         const isPanicked = await window.__TAURI__.core.invoke<boolean>("is_panic_disengaged");
@@ -831,18 +1057,50 @@ async function initSettingsView() {
 
   async function save() {
     if (!settings || !window.__TAURI__?.core) return;
+
+    // Sync zones to active profile
+    const activeProf = settings.profiles.find((p) => p.id === settings!.active_profile_id);
+    if (activeProf) {
+      activeProf.zones = JSON.parse(JSON.stringify(settings.zones));
+    }
+
     await window.__TAURI__.core.invoke("save_settings", { newSettings: settings });
+    renderHeader();
+  }
+
+  function renderHeader() {
+    if (!settings) return;
+    const editPill = document.getElementById("header-edit-pill");
+    const editLabel = document.getElementById("header-edit-label");
+    const countBadge = document.getElementById("zone-count-badge");
+
+    if (editPill && editLabel) {
+      if (settings.edit_mode) {
+        editPill.classList.add("active");
+        editLabel.textContent = "Edit Mode: Active (Click to Lock)";
+      } else {
+        editPill.classList.remove("active");
+        editLabel.textContent = "Edit Mode: Off";
+      }
+    }
+    if (countBadge) {
+      countBadge.textContent = `${settings.zones.length}`;
+    }
   }
 
   async function updateVolumePreview() {
     if (!window.__TAURI__?.core) return;
     try {
       const vol = await window.__TAURI__.core.invoke<number>("get_master_volume");
+      const muted = await window.__TAURI__.core.invoke<boolean>("get_master_mute");
       const pct = Math.round(vol * 100);
       const slider = document.getElementById("live-vol-slider") as HTMLInputElement;
       const label = document.getElementById("live-vol-label")!;
+      const iconBtn = document.getElementById("live-mute-btn")!;
+
       if (slider) slider.value = `${pct}`;
       if (label) label.textContent = `${pct}%`;
+      if (iconBtn) iconBtn.textContent = getSpeakerIcon(pct, muted);
     } catch (e) {
       console.warn("Could not read master volume:", e);
     }
@@ -873,37 +1131,59 @@ async function initSettingsView() {
     });
   }
 
-  function renderZoneList() {
-    const listEl = document.getElementById("zone-list-container")!;
+  function renderZoneGrid() {
+    const gridEl = document.getElementById("zone-grid-container")!;
     if (!settings) return;
 
-    listEl.innerHTML = "";
+    gridEl.innerHTML = "";
     settings.zones.forEach((z, idx) => {
-      const item = document.createElement("div");
-      item.className = `zone-item ${selectedZoneIndex === idx ? "selected" : ""}`;
-      item.innerHTML = `
-        <div class="zone-item-title">${z.name} (${z.rect.width}x${z.rect.height})</div>
-        <div class="zone-actions">
-          <label style="font-size: 12px; margin-right: 8px;">
-            <input type="checkbox" ${z.enabled ? "checked" : ""} data-idx="${idx}" class="zone-toggle" />
-            Enabled
-          </label>
+      const card = document.createElement("div");
+      card.className = `zone-card ${selectedZoneIndex === idx ? "selected" : ""}`;
+
+      let shapeIcon = "▭";
+      if (z.shape.type === "rounded") shapeIcon = "▢";
+      if (z.shape.type === "circle") shapeIcon = "◯";
+      if (z.shape.type === "screen_edge_strip") shapeIcon = "═";
+
+      card.innerHTML = `
+        <div class="zone-card-top">
+          <div class="zone-title-area">
+            <div class="zone-shape-icon">${shapeIcon}</div>
+            <div class="zone-name">${z.name}</div>
+          </div>
+          <input type="checkbox" class="toggle-switch zone-toggle" ${z.enabled ? "checked" : ""} data-idx="${idx}" title="Toggle Zone" />
+        </div>
+        <div class="zone-meta">
+          <span class="zone-badge">${z.rect.width} × ${z.rect.height}px</span>
+          <span class="zone-badge">Target: ${z.target.kind}</span>
+          <span class="zone-badge">Step: ${z.step}%</span>
+        </div>
+        <div style="display: flex; gap: 6px; justify-content: flex-end;">
+          <button class="btn" style="padding: 3px 8px; font-size: 11px;" data-action="edit">Configure</button>
         </div>
       `;
 
-      item.querySelector(".zone-item-title")?.addEventListener("click", () => {
+      card.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).classList.contains("zone-toggle")) return;
         selectedZoneIndex = idx;
-        renderZoneList();
+        renderZoneGrid();
         renderInspector();
       });
 
-      item.querySelector(".zone-toggle")?.addEventListener("change", async (e) => {
+      card.querySelector(".zone-toggle")?.addEventListener("change", async (e) => {
         const checked = (e.target as HTMLInputElement).checked;
         settings!.zones[idx].enabled = checked;
         await save();
       });
 
-      listEl.appendChild(item);
+      card.querySelector('[data-action="edit"]')?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        selectedZoneIndex = idx;
+        renderZoneGrid();
+        renderInspector();
+      });
+
+      gridEl.appendChild(card);
     });
 
     if (selectedZoneIndex !== null && settings.zones[selectedZoneIndex]) {
@@ -919,7 +1199,7 @@ async function initSettingsView() {
     const inspector = document.getElementById("zone-inspector")!;
     inspector.style.display = "block";
 
-    (document.getElementById("inspector-title") as HTMLElement).textContent = `Edit Zone: ${z.name}`;
+    (document.getElementById("inspector-title") as HTMLElement).textContent = `Configure Zone: ${z.name}`;
     (document.getElementById("z-name") as HTMLInputElement).value = z.name;
 
     // Target Selection
@@ -970,11 +1250,7 @@ async function initSettingsView() {
     document.getElementById("max-vol-val")!.textContent = `${Math.round((z.max_volume ?? 1) * 100)}%`;
 
     const softStartSel = document.getElementById("z-soft-start") as HTMLSelectElement;
-    if (z.soft_start_limit != null) {
-      softStartSel.value = `${z.soft_start_limit}`;
-    } else {
-      softStartSel.value = "none";
-    }
+    softStartSel.value = z.soft_start_limit != null ? `${z.soft_start_limit}` : "none";
 
     // Modifiers
     (document.getElementById("z-coarse-mod") as HTMLSelectElement).value = z.coarse_modifier || "shift";
@@ -988,32 +1264,69 @@ async function initSettingsView() {
     (document.getElementById("z-tick-sound") as HTMLInputElement).checked = z.tick_sound ?? false;
   }
 
+  function renderOsdStudio() {
+    if (!settings) return;
+    const osd = settings.osd || {
+      enabled: true,
+      duration_ms: 1200,
+      position: "top_center",
+      hide_in_fullscreen: true,
+      theme: "modern_fluent",
+    };
+
+    (document.getElementById("g-osd") as HTMLInputElement).checked = osd.enabled;
+    (document.getElementById("g-osd-hide-fullscreen") as HTMLInputElement).checked = osd.hide_in_fullscreen;
+    (document.getElementById("g-osd-dur") as HTMLInputElement).value = `${osd.duration_ms || 1200}`;
+    document.getElementById("osd-dur-val")!.textContent = `${osd.duration_ms || 1200}ms`;
+
+    // Render 10 Theme Cards
+    const themesGrid = document.getElementById("osd-themes-grid")!;
+    themesGrid.innerHTML = "";
+    OSD_THEMES.forEach((t) => {
+      const card = document.createElement("div");
+      card.className = `theme-card ${osd.theme === t.id ? "active" : ""}`;
+      card.innerHTML = `
+        <div class="theme-card-icon">${t.icon}</div>
+        <div class="theme-card-title">${t.name}</div>
+      `;
+      card.addEventListener("click", async () => {
+        settings!.osd.theme = t.id;
+        renderOsdStudio();
+        await save();
+      });
+      themesGrid.appendChild(card);
+    });
+
+    // Render Position Matrix (9-box selector)
+    const posMatrix = document.getElementById("pos-matrix")!;
+    posMatrix.querySelectorAll(".pos-btn").forEach((btn) => {
+      const b = btn as HTMLButtonElement;
+      if (b.dataset.pos === osd.position) {
+        b.classList.add("active");
+      } else {
+        b.classList.remove("active");
+      }
+    });
+
+    const posLabel = document.getElementById("pos-label")!;
+    posLabel.textContent = osd.position.replace(/_/g, " ").toUpperCase();
+
+    // Render Live Preview
+    const previewBox = document.getElementById("osd-live-preview")!;
+    previewBox.innerHTML = renderOsdHtml(osd.theme, 65, false, "Master Output");
+  }
+
   function renderGlobalPreferences() {
     if (!settings) return;
-    (document.getElementById("g-admin") as HTMLInputElement).checked = settings.run_as_admin;
     (document.getElementById("g-fullscreen-disable") as HTMLInputElement).checked =
       settings.fullscreen_rule?.disable_in_fullscreen ?? true;
 
-    // Time Profile
     const tp = settings.time_profile || { enabled: false, start_hour: 22, end_hour: 7, max_volume: 0.3 };
     (document.getElementById("night-enable") as HTMLInputElement).checked = tp.enabled;
     (document.getElementById("night-start") as HTMLInputElement).value = `${tp.start_hour}`;
     (document.getElementById("night-end") as HTMLInputElement).value = `${tp.end_hour}`;
     (document.getElementById("night-cap") as HTMLInputElement).value = `${Math.round(tp.max_volume * 100)}`;
     document.getElementById("night-cap-val")!.textContent = `${Math.round(tp.max_volume * 100)}%`;
-
-    // OSD
-    const osd = settings.osd || {
-      enabled: true,
-      duration_ms: 1000,
-      position: "center",
-      hide_in_fullscreen: true,
-      theme: "auto",
-    };
-    (document.getElementById("g-osd") as HTMLInputElement).checked = osd.enabled;
-    (document.getElementById("g-osd-hide-fullscreen") as HTMLInputElement).checked = osd.hide_in_fullscreen;
-    (document.getElementById("g-osd-pos") as HTMLSelectElement).value = osd.position || "center";
-    (document.getElementById("g-osd-dur") as HTMLInputElement).value = `${osd.duration_ms || 1000}`;
   }
 
   // Profile management event listeners
@@ -1023,7 +1336,7 @@ async function initSettingsView() {
       try {
         settings = await window.__TAURI__.core.invoke<Settings>("switch_profile", { profileId: profId });
         selectedZoneIndex = 0;
-        renderZoneList();
+        renderZoneGrid();
       } catch (err) {
         console.error("Failed to switch profile:", err);
       }
@@ -1058,16 +1371,16 @@ async function initSettingsView() {
       settings.zones = JSON.parse(JSON.stringify(settings.profiles[0].zones));
       renderProfiles();
       selectedZoneIndex = 0;
-      renderZoneList();
+      renderZoneGrid();
       await save();
     }
   });
 
-  // Inspector Input Event Listeners
+  // Zone Inspector Input Event Listeners
   document.getElementById("z-name")?.addEventListener("change", async (e) => {
     if (selectedZoneIndex !== null && settings) {
       settings.zones[selectedZoneIndex].name = (e.target as HTMLInputElement).value;
-      renderZoneList();
+      renderZoneGrid();
       await save();
     }
   });
@@ -1075,13 +1388,10 @@ async function initSettingsView() {
   document.getElementById("z-target")?.addEventListener("change", async (e) => {
     if (selectedZoneIndex !== null && settings) {
       const val = (e.target as HTMLSelectElement).value;
-      if (val === "master") {
-        settings.zones[selectedZoneIndex].target = { kind: "master" };
-      } else if (val === "mic") {
-        settings.zones[selectedZoneIndex].target = { kind: "mic" };
-      } else if (val === "app_under_cursor") {
-        settings.zones[selectedZoneIndex].target = { kind: "app_under_cursor" };
-      } else if (val === "app") {
+      if (val === "master") settings.zones[selectedZoneIndex].target = { kind: "master" };
+      else if (val === "mic") settings.zones[selectedZoneIndex].target = { kind: "mic" };
+      else if (val === "app_under_cursor") settings.zones[selectedZoneIndex].target = { kind: "app_under_cursor" };
+      else if (val === "app") {
         const firstAppId = audioApps[0]?.id || "default";
         settings.zones[selectedZoneIndex].target = { kind: "app", target: firstAppId };
       }
@@ -1102,13 +1412,29 @@ async function initSettingsView() {
     if (selectedZoneIndex !== null && settings) {
       const type = (e.target as HTMLSelectElement).value as ZoneShape["type"];
       if (type === "rounded") {
-        settings.zones[selectedZoneIndex].shape = { type, radius: 8 };
+        settings.zones[selectedZoneIndex].shape = { type, radius: 12 };
       } else if (type === "screen_edge_strip") {
-        settings.zones[selectedZoneIndex].shape = { type, edge: "top", thickness: 24 };
+        settings.zones[selectedZoneIndex].shape = { type, edge: "top", thickness: 28 };
       } else {
         settings.zones[selectedZoneIndex].shape = { type };
       }
       renderInspector();
+      await save();
+    }
+  });
+
+  document.getElementById("z-radius")?.addEventListener("change", async (e) => {
+    if (selectedZoneIndex !== null && settings) {
+      const radius = parseInt((e.target as HTMLInputElement).value) || 12;
+      settings.zones[selectedZoneIndex].shape = { type: "rounded", radius };
+      await save();
+    }
+  });
+
+  document.getElementById("z-edge")?.addEventListener("change", async (e) => {
+    if (selectedZoneIndex !== null && settings) {
+      const edge = (e.target as HTMLSelectElement).value as ScreenEdge;
+      settings.zones[selectedZoneIndex].shape = { type: "screen_edge_strip", edge, thickness: 28 };
       await save();
     }
   });
@@ -1220,18 +1546,19 @@ async function initSettingsView() {
     }
   });
 
-  // Zone Management Actions
+  // ==================== ADD SCREEN ZONE BUTTON ====================
   document.getElementById("add-zone-btn")?.addEventListener("click", async () => {
     if (!settings) return;
+
     const newId = `zone-${Date.now()}`;
     const newZone: ZoneConfig = {
       id: newId,
-      name: `Custom Zone ${settings.zones.length + 1}`,
+      name: `Screen Zone ${settings.zones.length + 1}`,
       monitor_id: null,
-      rect: { x: 100, y: 100, width: 300, height: 60 },
+      rect: { x: 120, y: 120, width: 320, height: 70 },
       shape: { type: "rectangle" },
       visual_mode: "faint_tint",
-      opacity: 0.25,
+      opacity: 0.28,
       target: { kind: "master" },
       step: 2,
       acceleration: false,
@@ -1248,10 +1575,19 @@ async function initSettingsView() {
       pulse_tint: true,
       enabled: true,
     };
+
     settings.zones.push(newZone);
     selectedZoneIndex = settings.zones.length - 1;
-    renderZoneList();
+
+    // Automatically enable edit mode so the user sees the newly spawned zone on their screen
+    settings.edit_mode = true;
+    renderHeader();
+    renderZoneGrid();
     await save();
+
+    if (window.__TAURI__?.core) {
+      await window.__TAURI__.core.invoke("set_edit_mode", { enabled: true });
+    }
   });
 
   document.getElementById("dup-zone-btn")?.addEventListener("click", async () => {
@@ -1260,11 +1596,11 @@ async function initSettingsView() {
     const copy: ZoneConfig = JSON.parse(JSON.stringify(orig));
     copy.id = `zone-${Date.now()}`;
     copy.name = `${orig.name} (Copy)`;
-    copy.rect.x += 40;
-    copy.rect.y += 40;
+    copy.rect.x += 30;
+    copy.rect.y += 30;
     settings.zones.push(copy);
     selectedZoneIndex = settings.zones.length - 1;
-    renderZoneList();
+    renderZoneGrid();
     await save();
   });
 
@@ -1272,18 +1608,11 @@ async function initSettingsView() {
     if (selectedZoneIndex === null || !settings) return;
     settings.zones.splice(selectedZoneIndex, 1);
     selectedZoneIndex = settings.zones.length > 0 ? 0 : null;
-    renderZoneList();
+    renderZoneGrid();
     await save();
   });
 
   // Global preferences listeners
-  document.getElementById("g-admin")?.addEventListener("change", async (e) => {
-    if (settings) {
-      settings.run_as_admin = (e.target as HTMLInputElement).checked;
-      await save();
-    }
-  });
-
   document.getElementById("g-fullscreen-disable")?.addEventListener("change", async (e) => {
     if (settings) {
       if (!settings.fullscreen_rule) {
@@ -1306,21 +1635,21 @@ async function initSettingsView() {
   });
 
   document.getElementById("night-start")?.addEventListener("change", async (e) => {
-    if (settings && settings.time_profile) {
+    if (settings?.time_profile) {
       settings.time_profile.start_hour = parseInt((e.target as HTMLInputElement).value) || 22;
       await save();
     }
   });
 
   document.getElementById("night-end")?.addEventListener("change", async (e) => {
-    if (settings && settings.time_profile) {
+    if (settings?.time_profile) {
       settings.time_profile.end_hour = parseInt((e.target as HTMLInputElement).value) || 7;
       await save();
     }
   });
 
   document.getElementById("night-cap")?.addEventListener("input", async (e) => {
-    if (settings && settings.time_profile) {
+    if (settings?.time_profile) {
       const val = parseInt((e.target as HTMLInputElement).value) || 30;
       settings.time_profile.max_volume = val / 100;
       document.getElementById("night-cap-val")!.textContent = `${val}%`;
@@ -1332,7 +1661,7 @@ async function initSettingsView() {
   document.getElementById("g-osd")?.addEventListener("change", async (e) => {
     if (settings) {
       if (!settings.osd) {
-        settings.osd = { enabled: true, duration_ms: 1000, position: "center", hide_in_fullscreen: true, theme: "auto" };
+        settings.osd = { enabled: true, duration_ms: 1200, position: "top_center", hide_in_fullscreen: true, theme: "modern_fluent" };
       }
       settings.osd.enabled = (e.target as HTMLInputElement).checked;
       await save();
@@ -1340,64 +1669,86 @@ async function initSettingsView() {
   });
 
   document.getElementById("g-osd-hide-fullscreen")?.addEventListener("change", async (e) => {
-    if (settings && settings.osd) {
+    if (settings?.osd) {
       settings.osd.hide_in_fullscreen = (e.target as HTMLInputElement).checked;
       await save();
     }
   });
 
-  document.getElementById("g-osd-pos")?.addEventListener("change", async (e) => {
-    if (settings && settings.osd) {
-      settings.osd.position = (e.target as HTMLSelectElement).value as OsdPosition;
+  document.getElementById("g-osd-dur")?.addEventListener("input", async (e) => {
+    if (settings?.osd) {
+      const dur = parseInt((e.target as HTMLInputElement).value) || 1200;
+      settings.osd.duration_ms = dur;
+      document.getElementById("osd-dur-val")!.textContent = `${dur}ms`;
       await save();
     }
   });
 
-  document.getElementById("g-osd-dur")?.addEventListener("change", async (e) => {
-    if (settings && settings.osd) {
-      settings.osd.duration_ms = parseInt((e.target as HTMLInputElement).value) || 1000;
+  // Position Matrix click handling
+  document.getElementById("pos-matrix")?.addEventListener("click", async (e) => {
+    const target = (e.target as HTMLElement).closest(".pos-btn") as HTMLButtonElement | null;
+    if (!target || !settings) return;
+    const pos = target.dataset.pos as OsdPosition;
+    if (pos) {
+      settings.osd.position = pos;
+      renderOsdStudio();
       await save();
     }
   });
 
-  // Live volume slider & test buttons
+  // Test OSD on screen button
+  document.getElementById("test-osd-btn")?.addEventListener("click", async () => {
+    if (window.__TAURI__?.core && settings?.osd) {
+      await window.__TAURI__.core.invoke("trigger_osd", {
+        theme: settings.osd.theme,
+        position: settings.osd.position,
+      });
+    }
+  });
+
+  // Master volume slider & test buttons
   document.getElementById("live-vol-slider")?.addEventListener("input", async (e) => {
     const val = parseInt((e.target as HTMLInputElement).value);
     document.getElementById("live-vol-label")!.textContent = `${val}%`;
     if (window.__TAURI__?.core) {
       await window.__TAURI__.core.invoke("set_master_volume", { level: val / 100 });
+      updateVolumePreview();
     }
   });
 
-  document.getElementById("test-up-btn")?.addEventListener("click", async () => {
+  document.getElementById("vol-step-up-btn")?.addEventListener("click", async () => {
     if (window.__TAURI__?.core) {
-      const newVol = await window.__TAURI__.core.invoke<number>("test_volume", { action: "up" });
-      const pct = Math.round(newVol * 100);
-      (document.getElementById("live-vol-slider") as HTMLInputElement).value = `${pct}`;
-      document.getElementById("live-vol-label")!.textContent = `${pct}%`;
+      await window.__TAURI__.core.invoke("test_volume", { action: "up" });
+      updateVolumePreview();
     }
   });
 
-  document.getElementById("test-down-btn")?.addEventListener("click", async () => {
+  document.getElementById("vol-step-down-btn")?.addEventListener("click", async () => {
     if (window.__TAURI__?.core) {
-      const newVol = await window.__TAURI__.core.invoke<number>("test_volume", { action: "down" });
-      const pct = Math.round(newVol * 100);
-      (document.getElementById("live-vol-slider") as HTMLInputElement).value = `${pct}`;
-      document.getElementById("live-vol-label")!.textContent = `${pct}%`;
+      await window.__TAURI__.core.invoke("test_volume", { action: "down" });
+      updateVolumePreview();
     }
   });
 
-  document.getElementById("test-mute-btn")?.addEventListener("click", async () => {
+  const onMuteToggle = async () => {
     if (window.__TAURI__?.core) {
       await window.__TAURI__.core.invoke("toggle_master_mute");
+      updateVolumePreview();
     }
-  });
+  };
+  document.getElementById("vol-toggle-mute-btn")?.addEventListener("click", onMuteToggle);
+  document.getElementById("live-mute-btn")?.addEventListener("click", onMuteToggle);
 
-  // Edit Mode toggle button
-  document.getElementById("toggle-edit-btn")?.addEventListener("click", async () => {
+  // Header Edit Mode Toggle Pill
+  document.getElementById("header-edit-pill")?.addEventListener("click", async () => {
     if (!window.__TAURI__?.core) return;
     const current = await window.__TAURI__.core.invoke<boolean>("get_edit_mode");
-    await window.__TAURI__.core.invoke("set_edit_mode", { enabled: !current });
+    const next = !current;
+    await window.__TAURI__.core.invoke("set_edit_mode", { enabled: next });
+    if (settings) {
+      settings.edit_mode = next;
+      renderHeader();
+    }
   });
 
   // Theme toggle button
@@ -1406,14 +1757,14 @@ async function initSettingsView() {
     const isDark = document.body.getAttribute("data-theme") !== "light";
     if (isDark) {
       document.body.setAttribute("data-theme", "light");
-      themeBtn.textContent = "Dark Theme";
+      themeBtn.textContent = "🌙 Dark";
     } else {
       document.body.removeAttribute("data-theme");
-      themeBtn.textContent = "Light Theme";
+      themeBtn.textContent = "☀️ Light";
     }
   });
 
-  // Configuration JSON import/export modal
+  // Modal for Import / Export
   const modalBackdrop = document.getElementById("modal-backdrop")!;
   const modalText = document.getElementById("modal-text") as HTMLTextAreaElement;
   const modalActionBtn = document.getElementById("modal-action-btn")!;
@@ -1453,8 +1804,10 @@ async function initSettingsView() {
         settings = parsed;
         await save();
         modalBackdrop.style.display = "none";
+        renderHeader();
         renderProfiles();
-        renderZoneList();
+        renderZoneGrid();
+        renderOsdStudio();
         renderGlobalPreferences();
         alert("Configuration imported and applied successfully!");
       } catch (e) {
@@ -1471,7 +1824,6 @@ async function initSettingsView() {
     }
   });
 
-  // Autostart toggle listener
   document.getElementById("g-autostart")?.addEventListener("change", async (e) => {
     if (window.__TAURI__?.core) {
       const enabled = (e.target as HTMLInputElement).checked;
@@ -1479,14 +1831,12 @@ async function initSettingsView() {
     }
   });
 
-  // Open Logs Folder button
   document.getElementById("open-logs-btn")?.addEventListener("click", async () => {
     if (window.__TAURI__?.core) {
       await window.__TAURI__.core.invoke("open_logs_folder");
     }
   });
 
-  // Panic button and resume button
   document.getElementById("panic-now-btn")?.addEventListener("click", async () => {
     if (window.__TAURI__?.core) {
       await window.__TAURI__.core.invoke("panic_shutdown");
@@ -1503,35 +1853,33 @@ async function initSettingsView() {
     }
   });
 
-  // External audio synchronization listener
+  // Listen to Tauri events in Settings window
   if (window.__TAURI__?.event) {
+    window.__TAURI__.event.listen<boolean>("edit-mode-changed", (evt) => {
+      if (settings) {
+        settings.edit_mode = evt.payload;
+        renderHeader();
+      }
+    });
+
     window.__TAURI__.event.listen<[number, boolean]>("volume-synced", (evt) => {
-      const [pct] = evt.payload;
+      const [pct, muted] = evt.payload;
       const slider = document.getElementById("live-vol-slider") as HTMLInputElement;
-      const label = document.getElementById("live-vol-label")!;
+      const label = document.getElementById("live-vol-label");
+      const iconBtn = document.getElementById("live-mute-btn");
       if (slider) slider.value = `${pct}`;
       if (label) label.textContent = `${pct}%`;
+      if (iconBtn) iconBtn.textContent = getSpeakerIcon(pct, muted);
     });
 
     window.__TAURI__.event.listen("panic-triggered", () => {
       const panicEl = document.getElementById("panic-banner");
-      const msgEl = document.getElementById("panic-msg");
       if (panicEl) panicEl.style.display = "flex";
-      if (msgEl) msgEl.textContent = "⚠️ EMERGENCY PANIC ACTIVE: Wheel hooks disengaged for system safety.";
     });
 
     window.__TAURI__.event.listen("panic-cleared", () => {
       const panicEl = document.getElementById("panic-banner");
       if (panicEl) panicEl.style.display = "none";
-    });
-
-    window.__TAURI__.event.listen<string>("watchdog-stall-detected", (evt) => {
-      const panicEl = document.getElementById("panic-banner");
-      const msgEl = document.getElementById("panic-msg");
-      if (panicEl) panicEl.style.display = "flex";
-      if (msgEl) {
-        msgEl.textContent = `⚠️ WATCHDOG HOOK STALL: ${evt.payload || "Hooks automatically uninstalled for safety."}`;
-      }
     });
   }
 
