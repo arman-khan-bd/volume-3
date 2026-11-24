@@ -458,8 +458,8 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
     {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
-            WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            WS_EX_TRANSPARENT,
         };
 
         if let Ok(hwnd) = window.hwnd() {
