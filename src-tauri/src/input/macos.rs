@@ -78,3 +78,13 @@ impl InputHook for MacosInputHook {
         }
     }
 }
+
+/// Helper function called by Tauri command to check accessibility permissions.
+pub fn has_accessibility_permission() -> bool {
+    MacosInputHook::is_accessibility_trusted()
+}
+
+/// Helper function called by Tauri command to open macOS Accessibility privacy settings.
+pub fn open_accessibility_privacy_settings() {
+    let _ = MacosInputHook::open_accessibility_settings();
+}

@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::Arc;
+
+#[cfg(target_os = "windows")]
+use std::sync::atomic::Ordering;
+#[cfg(target_os = "windows")]
 use std::thread;
 
 pub struct HotkeyManager {

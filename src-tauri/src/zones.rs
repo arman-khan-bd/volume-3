@@ -458,7 +458,8 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
     {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+            WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
         };
 
         if let Ok(hwnd) = window.hwnd() {
@@ -471,7 +472,7 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
                     cur_style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOOLWINDOW.0 as isize);
                 if !edit_mode {
                     // WS_EX_TRANSPARENT allows hit-testing to pass through to underlying windows
-                    new_style |= 0x00000020; // WS_EX_TRANSPARENT
+                    new_style |= WS_EX_TRANSPARENT.0 as isize;
                 }
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
             }
