@@ -162,9 +162,10 @@ impl VolumeBackend for MockBackend {
     fn set_app_volume(&self, app_id: &str, level: f32) -> Result<(), String> {
         let clamped = clamp_volume(level);
         let mut apps = self.apps.lock().map_err(|e| e.to_string())?;
-        if let Some(app) = apps.iter_mut().find(|a| {
-            a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id)
-        }) {
+        if let Some(app) = apps
+            .iter_mut()
+            .find(|a| a.id.eq_ignore_ascii_case(app_id) || a.name.eq_ignore_ascii_case(app_id))
+        {
             app.volume = clamped;
             Ok(())
         } else {
