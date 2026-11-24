@@ -86,7 +86,7 @@ impl OsdManager {
         let osd_win = match app.get_webview_window("volzone-osd") {
             Some(w) => w,
             None => {
-                let url = WebviewUrl::App("index.html?view=osd".into());
+                let url = WebviewUrl::App("index.html".into());
                 match WebviewWindowBuilder::new(app, "volzone-osd", url)
                     .title("VolZone OSD")
                     .transparent(true)

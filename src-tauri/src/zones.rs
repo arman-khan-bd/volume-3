@@ -458,6 +458,8 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
         .set_ignore_cursor_events(!edit_mode)
         .map_err(|e| format!("Failed to set ignore_cursor_events: {e}"))?;
 
+    let _ = window.set_focusable(edit_mode);
+
     #[cfg(target_os = "windows")]
     {
         use windows::Win32::Foundation::HWND;
@@ -473,25 +475,21 @@ pub fn apply_platform_window_traits(window: &WebviewWindow, edit_mode: bool) -> 
             // and update cached OS frame hit-testing structures.
             unsafe {
                 let cur_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-                let mut new_style =
-                    cur_style | (WS_EX_NOACTIVATE.0 as isize) | (WS_EX_TOOLWINDOW.0 as isize);
-                if edit_mode {
-                    // In edit mode: clear WS_EX_TRANSPARENT so user can click, drag, and resize
+                let mut new_style = cur_style | (WS_EX_TOOLWINDOW.0 as isize);
+                let swp_flags = if edit_mode {
+                    // In edit mode: clear WS_EX_TRANSPARENT and WS_EX_NOACTIVATE
+                    // so user can click, focus inputs, drag, and resize the zone.
                     new_style &= !(WS_EX_TRANSPARENT.0 as isize);
+                    new_style &= !(WS_EX_NOACTIVATE.0 as isize);
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED
                 } else {
-                    // Normal operation: WS_EX_TRANSPARENT allows hit-testing to pass through to underlying windows
+                    // Normal operation: WS_EX_TRANSPARENT and WS_EX_NOACTIVATE allow hit-testing to pass through
                     new_style |= WS_EX_TRANSPARENT.0 as isize;
-                }
+                    new_style |= WS_EX_NOACTIVATE.0 as isize;
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED
+                };
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_style);
-                let _ = SetWindowPos(
-                    hwnd,
-                    None,
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-                );
+                let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, swp_flags);
             }
         }
     }
@@ -529,10 +527,14 @@ pub fn create_zone_window(
             zone.rect.height,
         )));
         let _ = apply_platform_window_traits(&existing, edit_mode);
+        if edit_mode {
+            let _ = existing.show();
+            let _ = existing.set_always_on_top(true);
+        }
         return Ok(existing);
     }
 
-    let url = WebviewUrl::App(format!("index.html?zone_id={}", zone.id).into());
+    let url = WebviewUrl::App("index.html".into());
 
     let window = WebviewWindowBuilder::new(app, &label, url)
         .title(&zone.name)
@@ -540,7 +542,6 @@ pub fn create_zone_window(
         .decorations(false)
         .always_on_top(true)
         .skip_taskbar(true)
-        .focusable(false)
         .shadow(false)
         .position(zone.rect.x as f64, zone.rect.y as f64)
         .inner_size(zone.rect.width as f64, zone.rect.height as f64)
@@ -557,6 +558,11 @@ pub fn create_zone_window(
 
     if let Err(err) = apply_platform_window_traits(&window, edit_mode) {
         log::warn!("Failed to apply platform window traits to {label}: {err}");
+    }
+
+    if edit_mode {
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
     }
 
     Ok(window)

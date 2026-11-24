@@ -1550,12 +1550,14 @@ async function initSettingsView() {
   document.getElementById("add-zone-btn")?.addEventListener("click", async () => {
     if (!settings) return;
 
+    const count = settings.zones.length;
+    const offset = (count % 8) * 36;
     const newId = `zone-${Date.now()}`;
     const newZone: ZoneConfig = {
       id: newId,
-      name: `Screen Zone ${settings.zones.length + 1}`,
+      name: `Screen Zone ${count + 1}`,
       monitor_id: null,
-      rect: { x: 120, y: 120, width: 320, height: 70 },
+      rect: { x: 100 + offset, y: 100 + offset, width: 340, height: 75 },
       shape: { type: "rectangle" },
       visual_mode: "faint_tint",
       opacity: 0.28,
@@ -1862,6 +1864,19 @@ async function initSettingsView() {
       }
     });
 
+    window.__TAURI__.event.listen("settings-updated", async () => {
+      if (window.__TAURI__?.core) {
+        try {
+          settings = await window.__TAURI__.core.invoke<Settings>("get_settings");
+          renderHeader();
+          renderProfiles();
+          renderZoneGrid();
+        } catch (e) {
+          console.warn("Could not reload settings after update:", e);
+        }
+      }
+    });
+
     window.__TAURI__.event.listen<[number, boolean]>("volume-synced", (evt) => {
       const [pct, muted] = evt.payload;
       const slider = document.getElementById("live-vol-slider") as HTMLInputElement;
@@ -1888,15 +1903,25 @@ async function initSettingsView() {
 
 /* ==================== INITIALIZATION ==================== */
 
-window.addEventListener("DOMContentLoaded", () => {
-  const params = new URLSearchParams(window.location.search);
-  const zoneId = params.get("zone_id");
-  const view = params.get("view");
+window.addEventListener("DOMContentLoaded", async () => {
+  let label = "settings";
+  if (window.__TAURI__?.core) {
+    try {
+      label = await window.__TAURI__.core.invoke<string>("get_current_window_label");
+    } catch (e) {
+      console.warn("Could not retrieve window label via IPC:", e);
+    }
+  }
 
-  if (zoneId) {
-    initZoneOverlay(zoneId);
-  } else if (view === "osd") {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get("view");
+  const zoneIdParam = params.get("zone_id");
+
+  if (label === "volzone-osd" || label === "osd" || view === "osd") {
     initOsdView();
+  } else if (label.startsWith("zone-") || zoneIdParam) {
+    const targetZoneId = label.startsWith("zone-") ? label : zoneIdParam!;
+    initZoneOverlay(targetZoneId);
   } else {
     initSettingsView();
   }

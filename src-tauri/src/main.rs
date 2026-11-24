@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{
     AppHandle, Emitter, Listener, Manager, PhysicalPosition, PhysicalSize, Position, Size, State,
-    WebviewUrl, WebviewWindowBuilder,
+    WebviewUrl, WebviewWindow, WebviewWindowBuilder,
 };
 
 mod config;
@@ -32,7 +32,7 @@ pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let url = WebviewUrl::App("index.html?view=settings".into());
+    let url = WebviewUrl::App("index.html".into());
     WebviewWindowBuilder::new(app, "settings", url)
         .title("VolZone Settings")
         .inner_size(740.0, 840.0)
@@ -193,9 +193,19 @@ pub fn toggle_all_zones_internal(app: &AppHandle, state: &AppState) -> Result<bo
 }
 
 #[tauri::command]
+fn get_current_window_label(window: WebviewWindow) -> String {
+    window.label().to_string()
+}
+
+#[tauri::command]
 fn get_zone_config(state: State<AppState>, zone_id: String) -> Result<Option<Zone>, String> {
     let settings = state.settings.lock().map_err(|e| e.to_string())?;
-    Ok(settings.zones.iter().find(|z| z.id == zone_id).cloned())
+    let clean_id = zone_id.trim_start_matches("zone-");
+    Ok(settings
+        .zones
+        .iter()
+        .find(|z| z.id == zone_id || z.window_label() == zone_id || z.id == clean_id)
+        .cloned())
 }
 
 #[tauri::command]
@@ -308,7 +318,12 @@ fn update_zone_rect(
     rect: Rect,
 ) -> Result<(), String> {
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-    if let Some(zone) = settings.zones.iter_mut().find(|z| z.id == zone_id) {
+    let clean_id = zone_id.trim_start_matches("zone-");
+    if let Some(zone) = settings
+        .zones
+        .iter_mut()
+        .find(|z| z.id == zone_id || z.window_label() == zone_id || z.id == clean_id)
+    {
         zone.rect = rect;
 
         if let Some(win) = app.get_webview_window(&zone.window_label()) {
@@ -713,6 +728,7 @@ fn main() {
         ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            get_current_window_label,
             get_zone_config,
             get_edit_mode,
             toggle_edit_mode,
