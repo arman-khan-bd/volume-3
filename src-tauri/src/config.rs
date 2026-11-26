@@ -209,7 +209,7 @@ fn default_zones() -> Vec<Zone> {
             edge: ScreenEdge::Top,
             thickness: 24,
         },
-        visual_mode: VisualMode::FaintTint,
+        visual_mode: VisualMode::Invisible,
         opacity: 0.25,
         target: VolumeTarget::Master,
         step: 2.0,
@@ -224,7 +224,7 @@ fn default_zones() -> Vec<Zone> {
         fine_modifier: crate::zones::ModifierKey::Ctrl,
         horizontal_action: crate::zones::HorizontalWheelAction::None,
         tick_sound: false,
-        pulse_tint: true,
+        pulse_tint: false,
         enabled: true,
     }]
 }

@@ -99,16 +99,22 @@ impl RotatingLoggerInner {
         Ok(())
     }
 
-    fn write_entry(&mut self, entry: &str) -> Result<(), std::io::Error> {
+    fn write_entry_with_flush(&mut self, entry: &str, flush: bool) -> Result<(), std::io::Error> {
         let bytes = entry.as_bytes();
         self.rotate_if_needed(bytes.len() as u64)?;
 
         if let Some(ref mut file) = self.current_file {
             file.write_all(bytes)?;
-            file.flush()?;
+            if flush {
+                file.flush()?;
+            }
             self.current_size += bytes.len() as u64;
         }
         Ok(())
+    }
+
+    fn write_entry(&mut self, entry: &str) -> Result<(), std::io::Error> {
+        self.write_entry_with_flush(entry, true)
     }
 }
 
@@ -133,7 +139,12 @@ impl RotatingLogger {
 
 impl log::Log for RotatingLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug
+        let max_level = if cfg!(debug_assertions) {
+            Level::Debug
+        } else {
+            Level::Info
+        };
+        metadata.level() <= max_level
     }
 
     fn log(&self, record: &Record) {
@@ -158,12 +169,13 @@ impl log::Log for RotatingLogger {
             record.args()
         );
 
-        // Output to stderr for console visibility
+        #[cfg(debug_assertions)]
         eprint!("{formatted}");
 
-        // Append to rotating log file
+        // Flush immediately only for warnings and errors to minimize disk I/O during normal activity
+        let urgent_flush = record.level() <= Level::Warn;
         if let Ok(mut guard) = self.inner.lock() {
-            let _ = guard.write_entry(&formatted);
+            let _ = guard.write_entry_with_flush(&formatted, urgent_flush);
         }
     }
 

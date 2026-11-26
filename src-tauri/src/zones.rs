@@ -293,6 +293,26 @@ impl Zone {
         }
     }
 
+    /// Returns true only when an on-screen transparent overlay window is required.
+    /// Global input hooks intercept scroll events without needing an open overlay window
+    /// for invisible idle zones, saving significant WebView2/WebKit memory.
+    pub fn should_show_window(&self, edit_mode: bool) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        if edit_mode || self.visual_mode != VisualMode::Invisible {
+            return true;
+        }
+        #[cfg(target_os = "linux")]
+        if std::env::var("XDG_SESSION_TYPE")
+            .ok()
+            .is_some_and(|s| s.eq_ignore_ascii_case("wayland"))
+        {
+            return true;
+        }
+        false
+    }
+
     /// Checks if a physical pixel coordinate (px, py) falls within this zone's shape.
     pub fn hit_test_geometry(&self, px: i32, py: i32) -> bool {
         if !self.rect.contains(px, py) {
@@ -663,5 +683,19 @@ mod tests {
         assert_eq!(parsed.target, VolumeTarget::AppUnderCursor);
         assert_eq!(parsed.horizontal_action, HorizontalWheelAction::MediaTrack);
         assert_eq!(parsed.coarse_modifier, ModifierKey::Alt);
+    }
+
+    #[test]
+    fn test_zone_should_show_window_lightweight() {
+        let mut zone = Zone::new("light", "Taskbar", Rect::new(0, 720, 1920, 48));
+        zone.visual_mode = VisualMode::Invisible;
+        assert!(!zone.should_show_window(false));
+        assert!(zone.should_show_window(true));
+
+        zone.visual_mode = VisualMode::FaintTint;
+        assert!(zone.should_show_window(false));
+
+        zone.enabled = false;
+        assert!(!zone.should_show_window(true));
     }
 }

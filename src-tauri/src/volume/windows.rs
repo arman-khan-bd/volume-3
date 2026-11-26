@@ -156,7 +156,7 @@ pub struct WindowsVolumeController {
     active_master_endpoint: Arc<Mutex<Option<IAudioEndpointVolume>>>,
     subscribers: Arc<Mutex<Vec<VolumeSubscriber>>>,
     registered_callback: Arc<Mutex<Option<IAudioEndpointVolumeCallback>>>,
-    _device_notifier: Option<IMMNotificationClient>,
+    device_notifier: Option<IMMNotificationClient>,
 }
 
 // SAFETY: Windows COM interfaces in WindowsVolumeController are initialized under COINIT_MULTITHREADED
@@ -210,7 +210,7 @@ impl WindowsVolumeController {
             active_master_endpoint,
             subscribers,
             registered_callback,
-            _device_notifier: Some(notifier),
+            device_notifier: Some(notifier),
         })
     }
 
@@ -245,6 +245,31 @@ impl WindowsVolumeController {
             }
             VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
                 Err("Direct endpoint access not applicable for per-app target".to_string())
+            }
+        }
+    }
+}
+
+impl Drop for WindowsVolumeController {
+    fn drop(&mut self) {
+        if let Some(ref notifier) = self.device_notifier {
+            // SAFETY: Unregistering endpoint notification callback registered in new()
+            unsafe {
+                let _ = self
+                    .enumerator
+                    .UnregisterEndpointNotificationCallback(notifier);
+            }
+        }
+        if let Ok(cb_guard) = self.registered_callback.lock() {
+            if let Some(ref cb) = *cb_guard {
+                if let Ok(ep_guard) = self.active_master_endpoint.lock() {
+                    if let Some(ref ep) = *ep_guard {
+                        // SAFETY: Unregistering control change callback on active audio endpoint
+                        unsafe {
+                            let _ = ep.UnregisterControlChangeNotify(cb);
+                        }
+                    }
+                }
             }
         }
     }
@@ -349,6 +374,7 @@ impl VolumeBackend for WindowsVolumeController {
                         .map_err(|e| format!("Failed to get session enumerator: {e}"))?
                 };
                 let count = unsafe { session_enum.GetCount().unwrap_or(0) };
+                let target_pid = app_id.parse::<u32>().ok();
                 let mut updated = false;
 
                 for i in 0..count {
@@ -358,9 +384,11 @@ impl VolumeBackend for WindowsVolumeController {
                     };
                     if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                         let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-                        let matches_name = resolve_process_name(pid)
-                            .is_some_and(|n| n.eq_ignore_ascii_case(app_id.as_str()));
-                        if pid.to_string() == app_id.as_str() || matches_name {
+                        let matched = target_pid == Some(pid)
+                            || (target_pid.is_none()
+                                && resolve_process_name(pid)
+                                    .is_some_and(|n| n.eq_ignore_ascii_case(app_id.as_str())));
+                        if matched {
                             if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                                 // SAFETY: Setting mute on target session
                                 unsafe {
@@ -498,6 +526,7 @@ impl VolumeBackend for WindowsVolumeController {
         };
 
         let count = unsafe { session_enum.GetCount().unwrap_or(0) };
+        let target_pid = app_id.parse::<u32>().ok();
         let mut updated = false;
         for i in 0..count {
             // SAFETY: Accessing session at index i
@@ -507,9 +536,11 @@ impl VolumeBackend for WindowsVolumeController {
 
             if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                 let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-                let matches_name =
-                    resolve_process_name(pid).is_some_and(|n| n.eq_ignore_ascii_case(app_id));
-                if pid.to_string() == app_id || matches_name {
+                let matched = target_pid == Some(pid)
+                    || (target_pid.is_none()
+                        && resolve_process_name(pid)
+                            .is_some_and(|n| n.eq_ignore_ascii_case(app_id)));
+                if matched {
                     if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                         // SAFETY: Setting session volume on valid ISimpleAudioVolume with null event context
                         unsafe {

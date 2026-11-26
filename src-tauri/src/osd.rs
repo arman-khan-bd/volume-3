@@ -187,6 +187,34 @@ impl OsdManager {
         let _ = Self::ensure_osd_window_on_main_thread(app, 390, 155, false);
     }
 
+    /// Closes the hidden OSD overlay window after idle timeout so its `WebView2` process frees RAM.
+    pub fn close_if_idle(app: &AppHandle, idle_ms: u64) {
+        let is_idle = last_osd_store()
+            .lock()
+            .ok()
+            .and_then(|g| g.as_ref().map(|s| now_ms().saturating_sub(s.timestamp_ms)))
+            .map_or(true, |elapsed| elapsed >= idle_ms);
+
+        if !is_idle {
+            return;
+        }
+
+        let app_handle = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let still_idle = last_osd_store()
+                .lock()
+                .ok()
+                .and_then(|g| g.as_ref().map(|s| now_ms().saturating_sub(s.timestamp_ms)))
+                .map_or(true, |elapsed| elapsed >= idle_ms);
+
+            if still_idle {
+                if let Some(win) = app_handle.get_webview_window("volzone-osd") {
+                    let _ = win.close();
+                }
+            }
+        });
+    }
+
     fn compute_position(
         app: &AppHandle,
         position: OsdPosition,
@@ -350,7 +378,7 @@ impl OsdManager {
                 }
             }
 
-            log::info!(
+            log::debug!(
                 "OSD displayed: theme={}, vol={:.0}%, pos=({},{}) size={}x{}",
                 payload.theme,
                 payload.volume * 100.0,

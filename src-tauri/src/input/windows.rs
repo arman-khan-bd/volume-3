@@ -89,13 +89,7 @@ unsafe extern "system" fn low_level_mouse_proc(
         let py = info.pt.y;
 
         if let Some(state) = HOOK_STATE.get() {
-            // Check fullscreen rule: if disabled in fullscreen and foreground is fullscreen, pass through
-            if let Ok(fs_rule) = state.fullscreen_rule.read() {
-                if fs_rule.disable_in_fullscreen && is_foreground_fullscreen() {
-                    return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
-                }
-            }
-
+            // Fast path: inspect zone bounds first before any fullscreen Win32 calls or disk I/O.
             // SAFETY: Asynchronous query of virtual modifier keys
             let (ctrl, shift, alt, meta) = unsafe {
                 let c = (GetAsyncKeyState(i32::from(VK_CONTROL.0)) as u16 & 0x8000) != 0;
@@ -107,19 +101,18 @@ unsafe extern "system" fn low_level_mouse_proc(
             };
 
             let matched_zone = if let Ok(zones_guard) = state.zones.read() {
-                let res = hit_test(&zones_guard, px, py, ctrl, alt, shift, meta).cloned();
-                if let Some(ref zone) = res {
-                    log::info!("MouseHook: matched zone '{}' at ({px}, {py})", zone.name);
-                } else if msg == WM_MOUSEWHEEL {
-                    let count = zones_guard.len();
-                    log::debug!("MouseHook: unmatched wheel ({px}, {py}), zones={count}");
-                }
-                res
+                hit_test(&zones_guard, px, py, ctrl, alt, shift, meta).cloned()
             } else {
                 None
             };
 
             if let Some(zone) = matched_zone {
+                // Only check fullscreen state when cursor is actually inside a matching scroll zone
+                if let Ok(fs_rule) = state.fullscreen_rule.read() {
+                    if fs_rule.disable_in_fullscreen && is_foreground_fullscreen() {
+                        return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
+                    }
+                }
                 if let Ok(sender_guard) = state.sender.read() {
                     // 1. Middle-click to mute
                     if msg == WM_MBUTTONDOWN {
@@ -279,7 +272,7 @@ impl WindowsInputHook {
                     LAST_HEARTBEAT_MILLIS.store(initial, Ordering::SeqCst);
 
                     loop {
-                        thread::sleep(std::time::Duration::from_millis(2000));
+                        thread::sleep(std::time::Duration::from_millis(5000));
 
                         if PANIC_DISENGAGED.load(Ordering::SeqCst) {
                             break;
@@ -308,7 +301,7 @@ impl WindowsInputHook {
                             .as_millis() as u64;
                         let last = LAST_HEARTBEAT_MILLIS.load(Ordering::Relaxed);
 
-                        if now.saturating_sub(last) > 5500 {
+                        if now.saturating_sub(last) > 12000 {
                             log::error!("Watchdog: Hook thread {thread_id} stalled (>5s without heartbeat); emergency unhook executed.");
                             emergency_panic_unhook();
                             let _ = watchdog_app.emit("watchdog-stall-detected", "Hook thread stalled; hooks removed for system safety.");
@@ -450,7 +443,7 @@ impl WindowsInputHook {
                                 zone.name
                             );
                         } else {
-                            log::info!(
+                            log::debug!(
                                 "Volume updated for zone '{}': {:.0}% -> {:.0}%",
                                 zone.name,
                                 curr_vol * 100.0,

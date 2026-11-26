@@ -23,6 +23,45 @@ mod zones;
 pub struct AppState {
     pub settings: Mutex<config::Settings>,
     pub input_hook: Mutex<Box<dyn InputHook>>,
+    pub volume_backend: Mutex<Option<Box<dyn VolumeBackend>>>,
+}
+
+fn sync_zone_windows(app: &AppHandle, zones: &[Zone], edit_mode: bool) {
+    let visible_labels: Vec<String> = zones
+        .iter()
+        .filter(|z| z.should_show_window(edit_mode))
+        .map(zones::Zone::window_label)
+        .collect();
+
+    for (label, win) in app.webview_windows() {
+        if label.starts_with("zone-") && !visible_labels.contains(&label) {
+            let _ = win.close();
+        }
+    }
+
+    for zone in zones {
+        if !zone.should_show_window(edit_mode) {
+            continue;
+        }
+        let label = zone.window_label();
+        if let Some(win) = app.get_webview_window(&label) {
+            let _ = win.set_position(Position::Physical(PhysicalPosition::new(
+                zone.rect.x,
+                zone.rect.y,
+            )));
+            let _ = win.set_size(Size::Physical(PhysicalSize::new(
+                zone.rect.width,
+                zone.rect.height,
+            )));
+            let _ = apply_platform_window_traits(&win, edit_mode);
+            let _ = win.show();
+            if edit_mode {
+                let _ = win.set_always_on_top(true);
+            }
+        } else if let Err(err) = create_zone_window(app, zone, edit_mode) {
+            log::error!("Failed to create window for zone '{}': {err}", zone.name);
+        }
+    }
 }
 
 pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
@@ -50,22 +89,10 @@ pub fn toggle_edit_mode_internal(app: &AppHandle, state: &AppState) -> Result<bo
     settings.edit_mode = !settings.edit_mode;
     let edit_mode = settings.edit_mode;
     let _ = config::save_config(&settings);
+    let zones = settings.zones.clone();
+    drop(settings);
 
-    for zone in &settings.zones {
-        if !zone.enabled {
-            continue;
-        }
-        let label = zone.window_label();
-        if let Some(win) = app.get_webview_window(&label) {
-            let _ = apply_platform_window_traits(&win, edit_mode);
-            let _ = win.show();
-            if edit_mode {
-                let _ = win.set_always_on_top(true);
-            }
-        } else {
-            let _ = create_zone_window(app, zone, edit_mode);
-        }
-    }
+    sync_zone_windows(app, &zones, edit_mode);
 
     let _ = app.emit("edit-mode-changed", edit_mode);
     log::info!("Edit mode toggled: {edit_mode}");
@@ -127,52 +154,7 @@ pub fn save_settings_internal(
     }
 
     let edit_mode = new_settings.edit_mode;
-    let active_labels: Vec<String> = new_settings
-        .zones
-        .iter()
-        .filter(|z| z.enabled)
-        .map(zones::Zone::window_label)
-        .collect();
-
-    // 3. Close windows for deleted or disabled zones
-    for (label, win) in app.webview_windows() {
-        if label.starts_with("zone-") && !active_labels.contains(&label) {
-            let _ = win.close();
-        }
-    }
-
-    // 4. Update or spawn windows for enabled zones
-    for zone in &new_settings.zones {
-        if !zone.enabled {
-            continue;
-        }
-        let label = zone.window_label();
-        if let Some(win) = app.get_webview_window(&label) {
-            let _ = win.set_position(Position::Physical(PhysicalPosition::new(
-                zone.rect.x,
-                zone.rect.y,
-            )));
-            let _ = win.set_size(Size::Physical(PhysicalSize::new(
-                zone.rect.width,
-                zone.rect.height,
-            )));
-            let _ = apply_platform_window_traits(&win, edit_mode);
-            if edit_mode {
-                let _ = win.show();
-                let _ = win.set_always_on_top(true);
-            }
-        } else {
-            match create_zone_window(app, zone, edit_mode) {
-                Ok(win) => {
-                    let _ = win.show();
-                    log::info!("Created zone window for '{}'", zone.name);
-                }
-                Err(err) => {
-                    log::error!("Failed to create window for zone '{}': {err}", zone.name);
-                }
-            }
-        }
-    }
+    sync_zone_windows(app, &new_settings.zones, edit_mode);
 
     let _ = app.emit("settings-updated", ());
     log::info!("Settings saved and hot-reloaded successfully");
@@ -230,22 +212,10 @@ fn set_edit_mode(app: AppHandle, state: State<AppState>, enabled: bool) -> Resul
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
     settings.edit_mode = enabled;
     let _ = config::save_config(&settings);
+    let zones = settings.zones.clone();
+    drop(settings);
 
-    for zone in &settings.zones {
-        if !zone.enabled {
-            continue;
-        }
-        let label = zone.window_label();
-        if let Some(win) = app.get_webview_window(&label) {
-            let _ = apply_platform_window_traits(&win, enabled);
-            let _ = win.show();
-            if enabled {
-                let _ = win.set_always_on_top(true);
-            }
-        } else {
-            let _ = create_zone_window(&app, zone, enabled);
-        }
-    }
+    sync_zone_windows(&app, &zones, enabled);
 
     let _ = app.emit("edit-mode-changed", enabled);
     log::info!("Edit mode set to: {enabled}");
@@ -261,8 +231,10 @@ fn trigger_osd(
     accent_color: Option<String>,
     scale: Option<f32>,
 ) -> Result<(), String> {
-    let settings = state.settings.lock().map_err(|e| e.to_string())?;
-    let mut osd_cfg = settings.osd.clone();
+    let mut osd_cfg = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.osd.clone()
+    };
     if let Some(t) = theme {
         osd_cfg.theme = t;
     }
@@ -276,8 +248,8 @@ fn trigger_osd(
         osd_cfg.scale = s;
     }
     osd_cfg.enabled = true;
-    let vol = get_master_volume().unwrap_or(0.65);
-    let muted = get_master_mute().unwrap_or(false);
+    let vol = with_volume_backend(&state, |b| b.get_volume(&VolumeTarget::Master)).unwrap_or(0.65);
+    let muted = with_volume_backend(&state, |b| b.get_mute(&VolumeTarget::Master)).unwrap_or(false);
     osd::OsdManager::show_volume(&app, &osd_cfg, vol, muted, "Master Volume");
     Ok(())
 }
@@ -292,6 +264,11 @@ fn hide_osd_window(app: AppHandle) {
     if let Some(win) = app.get_webview_window("volzone-osd") {
         let _ = win.hide();
     }
+}
+
+#[tauri::command]
+fn close_osd_window(app: AppHandle) {
+    osd::OsdManager::close_if_idle(&app, 18_000);
 }
 
 #[tauri::command]
@@ -477,66 +454,82 @@ fn create_volume_backend() -> Result<Box<dyn VolumeBackend>, String> {
     return Ok(Box::new(volume::MockBackend::new()));
 }
 
-#[tauri::command]
-fn get_master_volume() -> Result<f32, String> {
-    create_volume_backend()?.get_volume(&VolumeTarget::Master)
+fn with_volume_backend<T, F>(state: &AppState, f: F) -> Result<T, String>
+where
+    F: FnOnce(&dyn VolumeBackend) -> Result<T, String>,
+{
+    let mut guard = state.volume_backend.lock().map_err(|e| e.to_string())?;
+    if guard.is_none() {
+        *guard = Some(create_volume_backend()?);
+    }
+    let backend = guard
+        .as_deref()
+        .ok_or_else(|| "Volume backend unavailable".to_string())?;
+    f(backend)
 }
 
 #[tauri::command]
-fn set_master_volume(level: f32) -> Result<(), String> {
-    create_volume_backend()?.set_volume(&VolumeTarget::Master, level)
+fn get_master_volume(state: State<AppState>) -> Result<f32, String> {
+    with_volume_backend(&state, |b| b.get_volume(&VolumeTarget::Master))
 }
 
 #[tauri::command]
-fn get_master_mute() -> Result<bool, String> {
-    create_volume_backend()?.get_mute(&VolumeTarget::Master)
+fn set_master_volume(state: State<AppState>, level: f32) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_volume(&VolumeTarget::Master, level))
 }
 
 #[tauri::command]
-fn set_master_mute(muted: bool) -> Result<(), String> {
-    create_volume_backend()?.set_mute(&VolumeTarget::Master, muted)
+fn get_master_mute(state: State<AppState>) -> Result<bool, String> {
+    with_volume_backend(&state, |b| b.get_mute(&VolumeTarget::Master))
 }
 
 #[tauri::command]
-fn toggle_master_mute() -> Result<bool, String> {
-    let current = get_master_mute()?;
-    set_master_mute(!current)?;
-    Ok(!current)
+fn set_master_mute(state: State<AppState>, muted: bool) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_mute(&VolumeTarget::Master, muted))
 }
 
 #[tauri::command]
-fn get_mic_volume() -> Result<f32, String> {
-    create_volume_backend()?.get_volume(&VolumeTarget::Mic)
+fn toggle_master_mute(state: State<AppState>) -> Result<bool, String> {
+    with_volume_backend(&state, |b| {
+        let current = b.get_mute(&VolumeTarget::Master)?;
+        b.set_mute(&VolumeTarget::Master, !current)?;
+        Ok(!current)
+    })
 }
 
 #[tauri::command]
-fn set_mic_volume(level: f32) -> Result<(), String> {
-    create_volume_backend()?.set_volume(&VolumeTarget::Mic, level)
+fn get_mic_volume(state: State<AppState>) -> Result<f32, String> {
+    with_volume_backend(&state, |b| b.get_volume(&VolumeTarget::Mic))
 }
 
 #[tauri::command]
-fn get_mic_mute() -> Result<bool, String> {
-    create_volume_backend()?.get_mute(&VolumeTarget::Mic)
+fn set_mic_volume(state: State<AppState>, level: f32) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_volume(&VolumeTarget::Mic, level))
 }
 
 #[tauri::command]
-fn set_mic_mute(muted: bool) -> Result<(), String> {
-    create_volume_backend()?.set_mute(&VolumeTarget::Mic, muted)
+fn get_mic_mute(state: State<AppState>) -> Result<bool, String> {
+    with_volume_backend(&state, |b| b.get_mute(&VolumeTarget::Mic))
 }
 
 #[tauri::command]
-fn list_audio_apps() -> Result<Vec<AppAudioSession>, String> {
-    create_volume_backend()?.list_apps()
+fn set_mic_mute(state: State<AppState>, muted: bool) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_mute(&VolumeTarget::Mic, muted))
 }
 
 #[tauri::command]
-fn set_app_volume(app_id: String, level: f32) -> Result<(), String> {
-    create_volume_backend()?.set_volume(&VolumeTarget::App(app_id), level)
+fn list_audio_apps(state: State<AppState>) -> Result<Vec<AppAudioSession>, String> {
+    with_volume_backend(&state, |b| b.list_apps())
 }
 
 #[tauri::command]
-fn set_app_mute(app_id: String, muted: bool) -> Result<(), String> {
-    create_volume_backend()?.set_mute(&VolumeTarget::App(app_id), muted)
+fn set_app_volume(state: State<AppState>, app_id: String, level: f32) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_volume(&VolumeTarget::App(app_id), level))
+}
+
+#[tauri::command]
+fn set_app_mute(state: State<AppState>, app_id: String, muted: bool) -> Result<(), String> {
+    with_volume_backend(&state, |b| b.set_mute(&VolumeTarget::App(app_id), muted))
 }
 
 #[tauri::command]
@@ -546,11 +539,28 @@ fn test_volume(
     action: String,
     show_osd: Option<bool>,
 ) -> Result<f32, String> {
-    handle_volume_test(&action)?;
-    let vol = get_master_volume()?;
+    let (vol, muted) = with_volume_backend(&state, |backend| {
+        let curr = backend.get_volume(&VolumeTarget::Master)?;
+        let curr_mute = backend.get_mute(&VolumeTarget::Master)?;
+        match action.as_str() {
+            "up" => {
+                backend.set_volume(&VolumeTarget::Master, (curr + 0.05).min(1.0))?;
+            }
+            "down" => {
+                backend.set_volume(&VolumeTarget::Master, (curr - 0.05).max(0.0))?;
+            }
+            "mute" => {
+                backend.set_mute(&VolumeTarget::Master, !curr_mute)?;
+            }
+            other => return Err(format!("Unknown action '{other}'")),
+        }
+        let next_vol = backend.get_volume(&VolumeTarget::Master)?;
+        let next_mute = backend.get_mute(&VolumeTarget::Master)?;
+        Ok((next_vol, next_mute))
+    })?;
+
     if show_osd.unwrap_or(false) {
         if let Ok(settings) = state.settings.lock() {
-            let muted = get_master_mute().unwrap_or(false);
             osd::OsdManager::show_volume(&app, &settings.osd, vol, muted, "Master Volume");
         }
     }
@@ -643,28 +653,19 @@ fn initialize_zone_windows(app: &AppHandle, settings: &mut Settings) {
         zones::adjust_zone_for_monitors(app, zone);
     }
 
-    let edit_mode = settings.edit_mode;
-    for zone in &settings.zones {
-        if !zone.enabled {
-            continue;
-        }
-
-        match create_zone_window(app, zone, edit_mode) {
-            Ok(_) => {
-                log::info!(
-                    "Created zone window for '{}' (Shape: {:?})",
-                    zone.name,
-                    zone.shape
-                );
-            }
-            Err(err) => {
-                log::error!("Failed to create window for zone '{}': {err}", zone.name);
-            }
-        }
-    }
+    sync_zone_windows(app, &settings.zones, settings.edit_mode);
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+        // Reduce WebView2 V8 heap & disable unused background browser features for low RAM usage
+        std::env::set_var(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-features=Translate,msSmartScreenProtection --js-flags=--max-old-space-size=48",
+        );
+    }
+
     // Initialize rotating file logger in the OS standard directory
     let _ = logger::init_logging(None);
 
@@ -818,6 +819,7 @@ fn main() {
             trigger_osd,
             get_last_osd,
             hide_osd_window,
+            close_osd_window,
             osd_debug_log
         ])
         .setup(move |app| {
@@ -842,9 +844,6 @@ fn main() {
             }
 
             let _tray = tray::setup_tray(&handle, &settings)?;
-
-            // Pre-initialize the OSD overlay window cleanly on the main thread
-            osd::OsdManager::init_osd_window(&handle);
 
             initialize_zone_windows(&handle, &mut settings);
 
@@ -885,33 +884,33 @@ fn main() {
             #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
             panic!("Unsupported OS");
 
-            let app_state = AppState {
-                settings: Mutex::new(settings),
-                input_hook: Mutex::new(hook),
-            };
-            app.manage(app_state);
-
-            // Real-time Audio Synchronization: Subscribe to system volume changes
-            #[cfg(target_os = "windows")]
-            {
-                let handle_for_sync = handle.clone();
-                if let Ok(vol_backend) = volume::WindowsVolumeController::new() {
-                    let _ = vol_backend.subscribe_changes(Box::new(move |vol, muted| {
+            // Real-time Audio Synchronization: share one COM controller for tray sync and IPC calls
+            let initial_backend: Option<Box<dyn VolumeBackend>> =
+                if let Ok(backend) = create_volume_backend() {
+                    let handle_for_sync = handle.clone();
+                    let _ = backend.subscribe_changes(Box::new(move |vol, muted| {
                         let pct = (vol * 100.0).round() as u32;
                         let mute_str = if muted { " (Muted)" } else { "" };
                         log::debug!("System volume synchronized: {pct}%{mute_str}");
 
-                        // Update tray tooltip live
                         let _ = handle_for_sync.tray_by_id("main").map(|t| {
                             let _ = t.set_tooltip(Some(format!("Volume 3 - {pct}%{mute_str}")));
                         });
 
-                        // Notify active UI windows
                         let _ = handle_for_sync.emit("volume-synced", (pct, muted));
                         let _ = handle_for_sync.emit("volume-changed", (vol, muted));
                     }));
-                }
-            }
+                    Some(backend)
+                } else {
+                    None
+                };
+
+            let app_state = AppState {
+                settings: Mutex::new(settings),
+                input_hook: Mutex::new(hook),
+                volume_backend: Mutex::new(initial_backend),
+            };
+            app.manage(app_state);
 
             // Register global hotkeys: Ctrl+Alt+V (Edit Mode) and Ctrl+Alt+Shift+Escape (Panic)
             let handle_for_hotkey = handle.clone();
@@ -986,8 +985,10 @@ fn main() {
                 let osd_cfg_opt = state.settings.lock().ok().map(|s| s.osd.clone());
                 if let Some(mut osd_cfg) = osd_cfg_opt {
                     osd_cfg.enabled = true;
-                    let vol = get_master_volume().unwrap_or(0.65);
-                    let muted = get_master_mute().unwrap_or(false);
+                    let vol = with_volume_backend(&state, |b| b.get_volume(&VolumeTarget::Master))
+                        .unwrap_or(0.65);
+                    let muted = with_volume_backend(&state, |b| b.get_mute(&VolumeTarget::Master))
+                        .unwrap_or(false);
                     osd::OsdManager::show_volume(
                         &handle_for_si_osd,
                         &osd_cfg,

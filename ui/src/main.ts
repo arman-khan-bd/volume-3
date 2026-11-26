@@ -550,6 +550,7 @@ function initOsdView() {
   const root = document.getElementById("osd-root")!;
   let fadeTimer: number | null = null;
   let winHideTimer: number | null = null;
+  let idleCloseTimer: number | null = null;
 
   const displayPayload = (payload: OsdPayload) => {
     const pct = Math.min(100, Math.max(0, Math.round(payload.volume * 100)));
@@ -563,13 +564,15 @@ function initOsdView() {
       showTarget: payload.show_target !== false,
     });
     root.classList.add("visible");
-    invoke("osd_debug_log", { msg: `Rendered theme=${theme} pct=${pct}%` }).catch(() => {});
 
     if (fadeTimer !== null) {
       window.clearTimeout(fadeTimer);
     }
     if (winHideTimer !== null) {
       window.clearTimeout(winHideTimer);
+    }
+    if (idleCloseTimer !== null) {
+      window.clearTimeout(idleCloseTimer);
     }
 
     const dur = payload.duration_ms || 1200;
@@ -579,13 +582,17 @@ function initOsdView() {
         invoke("hide_osd_window").catch(() => {});
       }, 240);
     }, dur);
+
+    // Unload idle OSD WebView2 renderer after 20s inactivity to keep background RAM minimal
+    idleCloseTimer = window.setTimeout(() => {
+      invoke("close_osd_window").catch(() => {});
+    }, dur + 20000);
   };
 
   listen<OsdPayload>("osd-show", (evt) => {
     displayPayload(evt.payload);
   })
     .then(() => {
-      invoke("osd_debug_log", { msg: "Listener registered in volzone-osd" }).catch(() => {});
       invoke<OsdPayload | null>("get_last_osd")
         .then((recent) => {
           if (recent) displayPayload(recent);
@@ -1628,16 +1635,23 @@ async function initSettingsView() {
     } catch {}
   }
 
+  async function ensureAudioAppsLoaded() {
+    if (audioApps.length > 0) return;
+    try {
+      audioApps = await invoke<AppAudioSession[]>("list_audio_apps");
+    } catch {
+      audioApps = [];
+    }
+  }
+
   async function loadSettings() {
     try {
       settings = await invoke<Settings>("get_settings");
       if (selectedZoneIndex >= settings.zones.length) {
         selectedZoneIndex = Math.max(0, settings.zones.length - 1);
       }
-      try {
-        audioApps = await invoke<AppAudioSession[]>("list_audio_apps");
-      } catch {
-        audioApps = [];
+      if (settings.zones.some((z) => z.target.kind === "app")) {
+        await ensureAudioAppsLoaded();
       }
 
       renderHeader();
@@ -1807,6 +1821,13 @@ async function initSettingsView() {
     if (z.target.kind === "app") {
       appGroup.style.display = "block";
       appSel.innerHTML = "";
+      if (audioApps.length === 0) {
+        ensureAudioAppsLoaded().then(() => {
+          if (audioApps.length > 0 && settings?.zones[selectedZoneIndex]?.id === z.id) {
+            renderInspector();
+          }
+        });
+      }
       audioApps.forEach((a) => {
         const opt = document.createElement("option");
         opt.value = a.id;
@@ -2107,7 +2128,7 @@ async function initSettingsView() {
         monitor_id: null,
         rect: { x: 0, y: 724, width: 1366, height: 44 },
         shape: { type: "rectangle" },
-        visual_mode: "faint_tint",
+        visual_mode: "invisible",
         opacity: 0.25,
         target: { kind: "master" },
         step: 2,
@@ -2122,7 +2143,7 @@ async function initSettingsView() {
         fine_modifier: "ctrl",
         horizontal_action: "none",
         tick_sound: false,
-        pulse_tint: true,
+        pulse_tint: false,
         enabled: true,
       });
       selectedZoneIndex = 0;
@@ -2269,9 +2290,18 @@ async function initSettingsView() {
     { passive: false }
   );
 
-  // Height & Width sliders + chips
+  // Height & Width sliders + chips (throttled rect IPC during drag; persist config on release)
+  let rectSliderTimer: number | null = null;
+  function sendThrottledRect(zoneId: string, rect: Rect) {
+    if (rectSliderTimer !== null) return;
+    rectSliderTimer = window.setTimeout(() => {
+      rectSliderTimer = null;
+      invoke("update_zone_rect", { zoneId, rect }).catch(() => {});
+    }, 32);
+  }
+
   const hSlider = document.getElementById("z-height-slider") as HTMLInputElement;
-  hSlider?.addEventListener("input", async (e) => {
+  hSlider?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value) || 40;
     const z = settings.zones[selectedZoneIndex];
@@ -2281,7 +2311,7 @@ async function initSettingsView() {
     document.getElementById("height-val-display")!.textContent = `${val}px`;
     (document.getElementById("z-h") as HTMLInputElement).value = `${val}`;
     (document.getElementById("z-y") as HTMLInputElement).value = `${z.rect.y}`;
-    try { await invoke("update_zone_rect", { zoneId: z.id, rect: z.rect }); } catch {}
+    sendThrottledRect(z.id, z.rect);
   });
   hSlider?.addEventListener("change", () => save());
 
@@ -2298,7 +2328,7 @@ async function initSettingsView() {
   });
 
   const wSlider = document.getElementById("z-width-slider") as HTMLInputElement;
-  wSlider?.addEventListener("input", async (e) => {
+  wSlider?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value) || 1366;
     const z = settings.zones[selectedZoneIndex];
@@ -2306,7 +2336,7 @@ async function initSettingsView() {
     z.rect.width = val;
     document.getElementById("width-val-display")!.textContent = val >= screenW - 10 ? "100% (Full Width)" : `${val}px`;
     (document.getElementById("z-w") as HTMLInputElement).value = `${val}`;
-    try { await invoke("update_zone_rect", { zoneId: z.id, rect: z.rect }); } catch {}
+    sendThrottledRect(z.id, z.rect);
   });
   wSlider?.addEventListener("change", () => save());
 
@@ -2421,39 +2451,39 @@ async function initSettingsView() {
     settings.zones[selectedZoneIndex].visual_mode = (e.target as HTMLSelectElement).value as ZoneConfig["visual_mode"];
     await save();
   });
-  document.getElementById("z-opacity")?.addEventListener("input", async (e) => {
+  document.getElementById("z-opacity")?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value);
     settings.zones[selectedZoneIndex].opacity = val / 100;
     document.getElementById("opacity-val")!.textContent = `${val}%`;
-    await save();
   });
-  document.getElementById("z-step")?.addEventListener("input", async (e) => {
+  document.getElementById("z-opacity")?.addEventListener("change", () => save());
+  document.getElementById("z-step")?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value);
     settings.zones[selectedZoneIndex].step = val;
     document.getElementById("step-val")!.textContent = `${val}%`;
-    await save();
   });
+  document.getElementById("z-step")?.addEventListener("change", () => save());
   document.getElementById("z-horiz-action")?.addEventListener("change", async (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     settings.zones[selectedZoneIndex].horizontal_action = (e.target as HTMLSelectElement).value as HorizontalWheelAction;
     await save();
   });
-  document.getElementById("z-min-vol")?.addEventListener("input", async (e) => {
+  document.getElementById("z-min-vol")?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value);
     settings.zones[selectedZoneIndex].min_volume = val / 100;
     document.getElementById("min-vol-val")!.textContent = `${val}%`;
-    await save();
   });
-  document.getElementById("z-max-vol")?.addEventListener("input", async (e) => {
+  document.getElementById("z-min-vol")?.addEventListener("change", () => save());
+  document.getElementById("z-max-vol")?.addEventListener("input", (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = parseInt((e.target as HTMLInputElement).value);
     settings.zones[selectedZoneIndex].max_volume = val / 100;
     document.getElementById("max-vol-val")!.textContent = `${val}%`;
-    await save();
   });
+  document.getElementById("z-max-vol")?.addEventListener("change", () => save());
   document.getElementById("z-soft-start")?.addEventListener("change", async (e) => {
     if (!settings?.zones[selectedZoneIndex]) return;
     const val = (e.target as HTMLSelectElement).value;
@@ -2597,13 +2627,13 @@ async function initSettingsView() {
     renderOsdStudio();
     await save();
   });
-  document.getElementById("g-osd-dur")?.addEventListener("input", async (e) => {
+  document.getElementById("g-osd-dur")?.addEventListener("input", (e) => {
     if (!settings) return;
     const dur = parseInt((e.target as HTMLInputElement).value) || 1200;
     settings.osd.duration_ms = dur;
     document.getElementById("osd-dur-val")!.textContent = `${(dur / 1000).toFixed(1)} sec`;
-    await save();
   });
+  document.getElementById("g-osd-dur")?.addEventListener("change", () => save());
   document.getElementById("g-osd-scale")?.addEventListener("change", async (e) => {
     if (!settings) return;
     settings.osd.scale = parseFloat((e.target as HTMLSelectElement).value) || 1.0;
@@ -2700,14 +2730,14 @@ async function initSettingsView() {
       await save();
     }
   });
-  document.getElementById("night-cap")?.addEventListener("input", async (e) => {
+  document.getElementById("night-cap")?.addEventListener("input", (e) => {
     if (settings?.time_profile) {
       const val = parseInt((e.target as HTMLInputElement).value) || 30;
       settings.time_profile.max_volume = val / 100;
       document.getElementById("night-cap-val")!.textContent = `${val}%`;
-      await save();
     }
   });
+  document.getElementById("night-cap")?.addEventListener("change", () => save());
 
   // Profiles
   document.getElementById("profile-select")?.addEventListener("change", async (e) => {
