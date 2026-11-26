@@ -131,7 +131,7 @@ impl HotkeyManager {
                 .map_err(|e| format!("Failed to spawn hotkey thread: {e}"))?;
 
             rx.recv().map_err(|e| format!("Hotkey init error: {e}"))??;
-            return Ok(());
+            Ok(())
         }
 
         #[cfg(not(target_os = "windows"))]

@@ -72,7 +72,7 @@ pub fn toggle_edit_mode_internal(app: &AppHandle, state: &AppState) -> Result<bo
     Ok(edit_mode)
 }
 
-pub fn panic_shutdown_internal(app: &AppHandle, state: &AppState) -> Result<(), String> {
+pub fn panic_shutdown_internal(app: &AppHandle, state: &AppState) {
     input::emergency_panic_unhook();
 
     if let Ok(mut hook) = state.input_hook.lock() {
@@ -85,7 +85,6 @@ pub fn panic_shutdown_internal(app: &AppHandle, state: &AppState) -> Result<(), 
 
     let _ = app.emit("panic-triggered", ());
     log::warn!("EMERGENCY PANIC: Hooks stopped, zones disengaged.");
-    Ok(())
 }
 
 pub fn unpanic_internal(app: &AppHandle, state: &AppState) -> Result<(), String> {
@@ -132,7 +131,7 @@ pub fn save_settings_internal(
         .zones
         .iter()
         .filter(|z| z.enabled)
-        .map(|z| z.window_label())
+        .map(zones::Zone::window_label)
         .collect();
 
     // 3. Close windows for deleted or disabled zones
@@ -210,7 +209,7 @@ fn get_zone_config(state: State<AppState>, zone_id: String) -> Result<Option<Zon
             z.id == zone_id
                 || z.window_label() == zone_id
                 || z.id == clean_id
-                || z.window_label() == format!("zone-{}", zone_id)
+                || z.window_label() == format!("zone-{zone_id}")
         })
         .cloned())
 }
@@ -279,8 +278,7 @@ fn trigger_osd(
     osd_cfg.enabled = true;
     let vol = get_master_volume().unwrap_or(0.65);
     let muted = get_master_mute().unwrap_or(false);
-    let osd_manager = osd::OsdManager::new();
-    osd_manager.show_volume(&app, &osd_cfg, vol, muted, "Master Volume");
+    osd::OsdManager::show_volume(&app, &osd_cfg, vol, muted, "Master Volume");
     Ok(())
 }
 
@@ -357,7 +355,7 @@ fn update_zone_rect(
         z.id == zone_id
             || z.window_label() == zone_id
             || z.id == clean_id
-            || z.window_label() == format!("zone-{}", zone_id)
+            || z.window_label() == format!("zone-{zone_id}")
     }) {
         zone.rect = rect;
 
@@ -402,8 +400,8 @@ fn reset_config(app: AppHandle, state: State<AppState>) -> Result<Settings, Stri
 }
 
 #[tauri::command]
-fn panic_shutdown(app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    panic_shutdown_internal(&app, &state)
+fn panic_shutdown(app: AppHandle, state: State<AppState>) {
+    panic_shutdown_internal(&app, &state);
 }
 
 #[tauri::command]
@@ -553,8 +551,7 @@ fn test_volume(
     if show_osd.unwrap_or(false) {
         if let Ok(settings) = state.settings.lock() {
             let muted = get_master_mute().unwrap_or(false);
-            let osd_manager = osd::OsdManager::new();
-            osd_manager.show_volume(&app, &settings.osd, vol, muted, "Master Volume");
+            osd::OsdManager::show_volume(&app, &settings.osd, vol, muted, "Master Volume");
         }
     }
     Ok(vol)
@@ -704,7 +701,7 @@ fn main() {
                 }
             }
             "--volume-test" => {
-                let action = args.get(i + 1).map(|s| s.as_str()).unwrap_or("up");
+                let action = args.get(i + 1).map_or("up", String::as_str);
                 if let Err(e) = handle_volume_test(action) {
                     eprintln!("Volume test failed: {e}");
                     std::process::exit(1);
@@ -765,7 +762,7 @@ fn main() {
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            log::info!("Single instance second launch forward: argv = {:?}", argv);
+            log::info!("Single instance second launch forward: argv = {argv:?}");
             if argv.iter().any(|arg| arg == "--edit") {
                 let _ = app.emit("single-instance-edit", ());
             } else if argv.iter().any(|arg| arg == "--disable") {
@@ -847,7 +844,7 @@ fn main() {
             let _tray = tray::setup_tray(&handle, &settings)?;
 
             // Pre-initialize the OSD overlay window cleanly on the main thread
-            osd::OsdManager::new().init_osd_window(&handle);
+            osd::OsdManager::init_osd_window(&handle);
 
             initialize_zone_windows(&handle, &mut settings);
 
@@ -927,7 +924,7 @@ fn main() {
                 },
                 move || {
                     let state = handle_for_panic.state::<AppState>();
-                    let _ = panic_shutdown_internal(&handle_for_panic, &state);
+                    panic_shutdown_internal(&handle_for_panic, &state);
                 },
             ) {
                 log::warn!("Global hotkey registration warning: {err}");
@@ -954,7 +951,7 @@ fn main() {
             let handle_for_tray_panic = handle.clone();
             app.listen("tray-panic", move |_| {
                 let state = handle_for_tray_panic.state::<AppState>();
-                let _ = panic_shutdown_internal(&handle_for_tray_panic, &state);
+                panic_shutdown_internal(&handle_for_tray_panic, &state);
             });
 
             let handle_for_tray_profile = handle.clone();
@@ -991,7 +988,7 @@ fn main() {
                     osd_cfg.enabled = true;
                     let vol = get_master_volume().unwrap_or(0.65);
                     let muted = get_master_mute().unwrap_or(false);
-                    osd::OsdManager::new().show_volume(
+                    osd::OsdManager::show_volume(
                         &handle_for_si_osd,
                         &osd_cfg,
                         vol,

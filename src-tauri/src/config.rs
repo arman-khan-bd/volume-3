@@ -123,6 +123,14 @@ impl Default for TimeProfile {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn local_hour_now() -> u8 {
+    use windows::Win32::System::SystemInformation::GetLocalTime;
+    // SAFETY: Standard Windows API querying local time
+    let st = unsafe { GetLocalTime() };
+    st.wHour as u8
+}
+
 impl TimeProfile {
     pub fn is_active_at_hour(&self, hour: u8) -> bool {
         if !self.enabled {
@@ -141,13 +149,8 @@ impl TimeProfile {
             return None;
         }
         #[cfg(target_os = "windows")]
-        {
-            use windows::Win32::System::SystemInformation::GetLocalTime;
-            // SAFETY: Standard Windows API querying local time
-            let st = unsafe { GetLocalTime() };
-            if self.is_active_at_hour(st.wHour as u8) {
-                return Some(self.max_volume);
-            }
+        if self.is_active_at_hour(local_hour_now()) {
+            return Some(self.max_volume);
         }
         None
     }

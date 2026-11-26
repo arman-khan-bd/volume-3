@@ -41,18 +41,18 @@ pub enum ScreenEdge {
     Right,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ZoneShape {
+    #[default]
     Rectangle,
-    Rounded { radius: u32 },
+    Rounded {
+        radius: u32,
+    },
     Circle,
-    ScreenEdgeStrip { edge: ScreenEdge, thickness: u32 },
-}
-
-impl Default for ZoneShape {
-    fn default() -> Self {
-        Self::Rectangle
-    }
+    ScreenEdgeStrip {
+        edge: ScreenEdge,
+        thickness: u32,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -120,19 +120,14 @@ pub enum VisualMode {
     AlwaysVisible,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(tag = "kind", content = "target", rename_all = "snake_case")]
 pub enum VolumeTarget {
+    #[default]
     Master,
     Mic,
     App(String),
     AppUnderCursor,
-}
-
-impl Default for VolumeTarget {
-    fn default() -> Self {
-        Self::Master
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -176,11 +171,11 @@ impl Modifiers {
         }
     }
 
-    pub const fn is_none(&self) -> bool {
+    pub const fn is_none(self) -> bool {
         !self.ctrl && !self.alt && !self.shift && !self.meta
     }
 
-    pub fn matches(&self, ctrl: bool, alt: bool, shift: bool, meta: bool) -> bool {
+    pub fn matches(self, ctrl: bool, alt: bool, shift: bool, meta: bool) -> bool {
         self.ctrl == ctrl && self.alt == alt && self.shift == shift && self.meta == meta
     }
 }
@@ -357,15 +352,15 @@ impl Zone {
 }
 
 /// Pure hit-testing function checking an array of zones for physical cursor containment and modifier match.
-pub fn hit_test<'a>(
-    zones: &'a [Zone],
+pub fn hit_test(
+    zones: &[Zone],
     px: i32,
     py: i32,
     ctrl: bool,
     alt: bool,
     shift: bool,
     meta: bool,
-) -> Option<&'a Zone> {
+) -> Option<&Zone> {
     for zone in zones {
         if !zone.enabled {
             continue;
@@ -419,7 +414,7 @@ pub fn adjust_zone_for_monitors(app: &AppHandle, zone: &mut Zone) {
     let target_monitor = if let Some(ref m_id) = zone.monitor_id {
         monitors
             .iter()
-            .find(|m| m.name().map(|n| n == m_id).unwrap_or(false))
+            .find(|m| m.name().is_some_and(|n| n == m_id))
     } else {
         None
     };
@@ -434,7 +429,7 @@ pub fn adjust_zone_for_monitors(app: &AppHandle, zone: &mut Zone) {
             if let Some(ref p_name) = primary_name {
                 monitors
                     .iter()
-                    .find(|m| m.name().map(|n| n == p_name).unwrap_or(false))
+                    .find(|m| m.name().is_some_and(|n| n == p_name))
             } else {
                 None
             }
@@ -543,8 +538,8 @@ pub fn create_zone_window(
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
-        .position(zone.rect.x as f64, zone.rect.y as f64)
-        .inner_size(zone.rect.width as f64, zone.rect.height as f64)
+        .position(f64::from(zone.rect.x), f64::from(zone.rect.y))
+        .inner_size(f64::from(zone.rect.width), f64::from(zone.rect.height))
         .build()?;
 
     let _ = window.set_position(Position::Physical(PhysicalPosition::new(

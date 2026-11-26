@@ -41,7 +41,7 @@ impl MacosInputHook {
         Ok(())
     }
 
-    /// Re-enables a CGEventTap if macOS disabled it due to timeout.
+    /// Re-enables a `CGEventTap` if macOS disabled it due to timeout.
     pub fn handle_tap_disabled(&mut self) {
         log::warn!("CGEventTap was disabled by macOS; re-enabling tap");
         // Invokes CGEventTapEnable(mach_port, true)

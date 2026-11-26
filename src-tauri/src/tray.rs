@@ -73,7 +73,7 @@ pub fn setup_tray(app: &AppHandle, settings: &Settings) -> Result<TrayIcon<Wry>,
     for y in 0..16 {
         for x in 0..16 {
             let is_border = x == 0 || x == 15 || y == 0 || y == 15;
-            let is_inner = x >= 4 && x <= 11 && y >= 4 && y <= 11;
+            let is_inner = (4..=11).contains(&x) && (4..=11).contains(&y);
             if is_border || is_inner {
                 icon_rgba.extend_from_slice(&[41, 128, 185, 255]); // Blue accent
             } else {

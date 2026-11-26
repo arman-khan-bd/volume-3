@@ -23,7 +23,7 @@ pub struct LinuxVolumeController {
 impl LinuxVolumeController {
     pub fn new() -> Result<Self, String> {
         let tool = Self::detect_tool();
-        log::info!("Detected Linux audio backend tool: {:?}", tool);
+        log::info!("Detected Linux audio backend tool: {tool:?}");
         Ok(Self {
             tool,
             subscribers: Arc::new(Mutex::new(Vec::new())),
@@ -34,8 +34,7 @@ impl LinuxVolumeController {
         if Command::new("wpctl")
             .arg("status")
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+            .is_ok_and(|o| o.status.success())
         {
             return LinuxAudioTool::PipeWire;
         }
@@ -43,8 +42,7 @@ impl LinuxVolumeController {
         if Command::new("pactl")
             .arg("info")
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+            .is_ok_and(|o| o.status.success())
         {
             return LinuxAudioTool::PulseAudio;
         }
@@ -53,8 +51,7 @@ impl LinuxVolumeController {
             .arg("sget")
             .arg("Master")
             .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+            .is_ok_and(|o| o.status.success())
         {
             return LinuxAudioTool::Alsa;
         }

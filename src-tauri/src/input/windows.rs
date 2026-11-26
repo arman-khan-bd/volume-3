@@ -11,8 +11,8 @@ use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY};
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    keybd_event, GetAsyncKeyState, KEYEVENTF_KEYUP, VK_CONTROL, VK_LWIN, VK_MEDIA_NEXT_TRACK,
-    VK_MEDIA_PREV_TRACK, VK_MENU, VK_RWIN, VK_SHIFT,
+    keybd_event, GetAsyncKeyState, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_CONTROL, VK_LWIN,
+    VK_MEDIA_NEXT_TRACK, VK_MEDIA_PREV_TRACK, VK_MENU, VK_RWIN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, GetWindowThreadProcessId, PostThreadMessageW,
@@ -98,11 +98,11 @@ unsafe extern "system" fn low_level_mouse_proc(
 
             // SAFETY: Asynchronous query of virtual modifier keys
             let (ctrl, shift, alt, meta) = unsafe {
-                let c = (GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
-                let s = (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
-                let a = (GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
-                let m = ((GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000) != 0)
-                    || ((GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000) != 0);
+                let c = (GetAsyncKeyState(i32::from(VK_CONTROL.0)) as u16 & 0x8000) != 0;
+                let s = (GetAsyncKeyState(i32::from(VK_SHIFT.0)) as u16 & 0x8000) != 0;
+                let a = (GetAsyncKeyState(i32::from(VK_MENU.0)) as u16 & 0x8000) != 0;
+                let m = ((GetAsyncKeyState(i32::from(VK_LWIN.0)) as u16 & 0x8000) != 0)
+                    || ((GetAsyncKeyState(i32::from(VK_RWIN.0)) as u16 & 0x8000) != 0);
                 (c, s, a, m)
             };
 
@@ -132,7 +132,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                         return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
                     }
 
-                    let raw_delta = (info.mouseData >> 16) as i16 as f32;
+                    let raw_delta = f32::from((info.mouseData >> 16) as i16);
 
                     // 2. Horizontal wheel tilt handling
                     if msg == WM_MOUSEHWHEEL {
@@ -157,7 +157,7 @@ unsafe extern "system" fn low_level_mouse_proc(
                         ctrl_down: ctrl,
                         alt_down: alt,
                         meta_down: meta,
-                        timestamp_ms: info.time as u64,
+                        timestamp_ms: u64::from(info.time),
                     };
 
                     let res = sender_guard.try_send(InputEvent::Wheel(event));
@@ -182,7 +182,7 @@ fn send_media_key(next_track: bool) {
     };
     // SAFETY: Synthesizing standard virtual media key press and release
     unsafe {
-        keybd_event(vk.0 as u8, 0, Default::default(), 0);
+        keybd_event(vk.0 as u8, 0, KEYBD_EVENT_FLAGS::default(), 0);
         keybd_event(vk.0 as u8, 0, KEYEVENTF_KEYUP, 0);
     }
 }
@@ -332,13 +332,11 @@ impl WindowsInputHook {
             }
         };
 
-        let osd_manager = OsdManager::new();
         let mut last_event_times: HashMap<String, Instant> = HashMap::new();
 
         while let Ok(msg) = receiver.recv() {
-            let state = match HOOK_STATE.get() {
-                Some(s) => s,
-                None => continue,
+            let Some(state) = HOOK_STATE.get() else {
+                continue;
             };
 
             match msg {
@@ -351,20 +349,18 @@ impl WindowsInputHook {
 
                     if let Some(zone) = zone {
                         let osd_cfg = if let Some(state) = HOOK_STATE.get() {
-                            state.osd_config.read().map(|g| g.clone()).unwrap_or_default()
+                            state
+                                .osd_config
+                                .read()
+                                .map(|g| g.clone())
+                                .unwrap_or_default()
                         } else {
                             OsdConfig::default()
                         };
                         if let Ok(muted) = backend.get_mute(&zone.target) {
                             let _ = backend.set_mute(&zone.target, !muted);
                             if let Ok(vol) = backend.get_volume(&zone.target) {
-                                osd_manager.show_volume(
-                                    &app,
-                                    &osd_cfg,
-                                    vol,
-                                    !muted,
-                                    &zone.name,
-                                );
+                                OsdManager::show_volume(&app, &osd_cfg, vol, !muted, &zone.name);
                             }
                         }
                     }
@@ -376,9 +372,8 @@ impl WindowsInputHook {
                         None
                     };
 
-                    let zone = match zone {
-                        Some(z) => z,
-                        None => continue,
+                    let Some(zone) = zone else {
+                        continue;
                     };
 
                     let now = Instant::now();
@@ -474,13 +469,7 @@ impl WindowsInputHook {
                                 .unwrap_or_default();
 
                             // Show OSD feedback
-                            osd_manager.show_volume(
-                                &app,
-                                &osd_cfg,
-                                final_vol,
-                                false,
-                                &zone.name,
-                            );
+                            OsdManager::show_volume(&app, &osd_cfg, final_vol, false, &zone.name);
                         }
                     }
                 }
@@ -498,7 +487,7 @@ impl WindowsInputHook {
                 let res = GetTokenInformation(
                     token,
                     TokenElevation,
-                    Some(&mut elevation as *mut _ as *mut _),
+                    Some(std::ptr::addr_of_mut!(elevation).cast()),
                     std::mem::size_of::<TOKEN_ELEVATION>() as u32,
                     &mut return_length,
                 );

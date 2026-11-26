@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+// windows::core::implement macro expands #[inline(always)] and &self -> ptr conversions
+#![allow(clippy::inline_always, clippy::ref_as_ptr)]
 
 use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
 use crate::zones::VolumeTarget;
@@ -44,10 +46,8 @@ fn resolve_process_name(pid: u32) -> Option<String> {
         let path = String::from_utf16_lossy(&buf[..size as usize]);
         let exe = std::path::Path::new(&path).file_stem()?.to_str()?;
         let mut chars = exe.chars();
-        let friendly = match chars.next() {
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            None => return None,
-        };
+        let first = chars.next()?;
+        let friendly = first.to_uppercase().collect::<String>() + chars.as_str();
         Some(friendly)
     }
 }
@@ -186,8 +186,10 @@ impl WindowsVolumeController {
                 .ok()
         };
 
+        #[allow(clippy::arc_with_non_send_sync)]
         let active_master_endpoint = Arc::new(Mutex::new(master_endpoint));
         let subscribers = Arc::new(Mutex::new(Vec::new()));
+        #[allow(clippy::arc_with_non_send_sync)]
         let registered_callback = Arc::new(Mutex::new(None));
 
         let notifier: IMMNotificationClient = DeviceChangeNotifier {
@@ -298,7 +300,7 @@ impl VolumeBackend for WindowsVolumeController {
                 unsafe {
                     endpoint
                         .GetMute()
-                        .map(|b| b.as_bool())
+                        .map(windows_core::BOOL::as_bool)
                         .map_err(|e| format!("Failed to get mute status: {e}"))
                 }
             }
@@ -351,15 +353,13 @@ impl VolumeBackend for WindowsVolumeController {
 
                 for i in 0..count {
                     // SAFETY: Enumerating session at index i
-                    let session = match unsafe { session_enum.GetSession(i) } {
-                        Ok(s) => s,
-                        Err(_) => continue,
+                    let Ok(session) = (unsafe { session_enum.GetSession(i) }) else {
+                        continue;
                     };
                     if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                         let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
                         let matches_name = resolve_process_name(pid)
-                            .map(|n| n.eq_ignore_ascii_case(app_id.as_str()))
-                            .unwrap_or(false);
+                            .is_some_and(|n| n.eq_ignore_ascii_case(app_id.as_str()));
                         if pid.to_string() == app_id.as_str() || matches_name {
                             if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                                 // SAFETY: Setting mute on target session
@@ -438,14 +438,12 @@ impl VolumeBackend for WindowsVolumeController {
 
         for i in 0..count {
             // SAFETY: Accessing session at index i
-            let session = match unsafe { session_enum.GetSession(i) } {
-                Ok(s) => s,
-                Err(_) => continue,
+            let Ok(session) = (unsafe { session_enum.GetSession(i) }) else {
+                continue;
             };
 
-            let control2 = match session.cast::<IAudioSessionControl2>() {
-                Ok(c) => c,
-                Err(_) => continue,
+            let Ok(control2) = session.cast::<IAudioSessionControl2>() else {
+                continue;
             };
 
             let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
@@ -453,15 +451,14 @@ impl VolumeBackend for WindowsVolumeController {
                 continue;
             }
 
-            let simple_vol = match session.cast::<ISimpleAudioVolume>() {
-                Ok(v) => v,
-                Err(_) => continue,
+            let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() else {
+                continue;
             };
 
             // SAFETY: Calling GetMasterVolume and GetMute on valid ISimpleAudioVolume
             let (vol, muted) = unsafe {
                 let v = simple_vol.GetMasterVolume().unwrap_or(1.0);
-                let m = simple_vol.GetMute().map(|b| b.as_bool()).unwrap_or(false);
+                let m = simple_vol.GetMute().is_ok_and(windows_core::BOOL::as_bool);
                 (v, m)
             };
 
@@ -504,16 +501,14 @@ impl VolumeBackend for WindowsVolumeController {
         let mut updated = false;
         for i in 0..count {
             // SAFETY: Accessing session at index i
-            let session = match unsafe { session_enum.GetSession(i) } {
-                Ok(s) => s,
-                Err(_) => continue,
+            let Ok(session) = (unsafe { session_enum.GetSession(i) }) else {
+                continue;
             };
 
             if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                 let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-                let matches_name = resolve_process_name(pid)
-                    .map(|n| n.eq_ignore_ascii_case(app_id))
-                    .unwrap_or(false);
+                let matches_name =
+                    resolve_process_name(pid).is_some_and(|n| n.eq_ignore_ascii_case(app_id));
                 if pid.to_string() == app_id || matches_name {
                     if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                         // SAFETY: Setting session volume on valid ISimpleAudioVolume with null event context

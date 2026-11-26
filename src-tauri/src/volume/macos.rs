@@ -18,7 +18,7 @@ impl MacosVolumeController {
         })
     }
 
-    fn run_osascript(&self, script: &str) -> Result<String, String> {
+    fn run_osascript(script: &str) -> Result<String, String> {
         let output = Command::new("osascript")
             .arg("-e")
             .arg(script)
@@ -44,14 +44,14 @@ impl VolumeBackend for MacosVolumeController {
     fn get_volume(&self, target: &VolumeTarget) -> Result<f32, String> {
         match target {
             VolumeTarget::Master => {
-                let out = self.run_osascript("output volume of (get volume settings)")?;
+                let out = Self::run_osascript("output volume of (get volume settings)")?;
                 let pct: f32 = out
                     .parse()
                     .map_err(|e| format!("Failed to parse macOS volume '{out}': {e}"))?;
                 Ok(clamp_volume(pct / 100.0))
             }
             VolumeTarget::Mic => {
-                let out = self.run_osascript("input volume of (get volume settings)")?;
+                let out = Self::run_osascript("input volume of (get volume settings)")?;
                 let pct: f32 = out
                     .parse()
                     .map_err(|e| format!("Failed to parse macOS input volume '{out}': {e}"))?;
@@ -69,7 +69,7 @@ impl VolumeBackend for MacosVolumeController {
 
         match target {
             VolumeTarget::Master => {
-                self.run_osascript(&format!("set volume output volume {pct}"))?;
+                Self::run_osascript(&format!("set volume output volume {pct}"))?;
                 let muted = self.get_mute(&VolumeTarget::Master).unwrap_or(false);
                 if let Ok(subs) = self.subscribers.lock() {
                     for sub in subs.iter() {
@@ -79,7 +79,7 @@ impl VolumeBackend for MacosVolumeController {
                 Ok(())
             }
             VolumeTarget::Mic => {
-                self.run_osascript(&format!("set volume input volume {pct}"))?;
+                Self::run_osascript(&format!("set volume input volume {pct}"))?;
                 Ok(())
             }
             VolumeTarget::App(_) | VolumeTarget::AppUnderCursor => {
@@ -91,7 +91,7 @@ impl VolumeBackend for MacosVolumeController {
     fn get_mute(&self, target: &VolumeTarget) -> Result<bool, String> {
         match target {
             VolumeTarget::Master => {
-                let out = self.run_osascript("output muted of (get volume settings)")?;
+                let out = Self::run_osascript("output muted of (get volume settings)")?;
                 Ok(out.eq_ignore_ascii_case("true"))
             }
             VolumeTarget::Mic => {
@@ -108,7 +108,7 @@ impl VolumeBackend for MacosVolumeController {
     fn set_mute(&self, target: &VolumeTarget, muted: bool) -> Result<(), String> {
         match target {
             VolumeTarget::Master => {
-                self.run_osascript(&format!("set volume output muted {muted}"))?;
+                Self::run_osascript(&format!("set volume output muted {muted}"))?;
                 let vol = self.get_volume(&VolumeTarget::Master).unwrap_or(0.5);
                 if let Ok(subs) = self.subscribers.lock() {
                     for sub in subs.iter() {
@@ -119,9 +119,9 @@ impl VolumeBackend for MacosVolumeController {
             }
             VolumeTarget::Mic => {
                 if muted {
-                    self.run_osascript("set volume input volume 0")?;
+                    Self::run_osascript("set volume input volume 0")?;
                 } else {
-                    self.run_osascript("set volume input volume 50")?;
+                    Self::run_osascript("set volume input volume 50")?;
                 }
                 Ok(())
             }

@@ -147,7 +147,7 @@ impl OsdManager {
             .focusable(false)
             .shadow(false)
             .visible(initially_visible)
-            .inner_size(win_w as f64, win_h as f64)
+            .inner_size(f64::from(win_w), f64::from(win_h))
             .build()
         {
             Ok(w) => {
@@ -182,8 +182,8 @@ impl OsdManager {
     }
 
     /// Pre-initializes the hidden OSD window during app startup on the UI main thread
-    /// so its WebView2 context is loaded and ready for instant feedback on the first scroll.
-    pub fn init_osd_window(&self, app: &AppHandle) {
+    /// so its `WebView2` context is loaded and ready for instant feedback on the first scroll.
+    pub fn init_osd_window(app: &AppHandle) {
         let _ = Self::ensure_osd_window_on_main_thread(app, 390, 155, false);
     }
 
@@ -217,10 +217,9 @@ impl OsdManager {
                 m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
                 m_pos.y + (m_size.height as i32) - win_h - 56,
             ),
-            OsdPosition::BottomLeft => (
-                m_pos.x + 40,
-                m_pos.y + (m_size.height as i32) - win_h - 56,
-            ),
+            OsdPosition::BottomLeft => {
+                (m_pos.x + 40, m_pos.y + (m_size.height as i32) - win_h - 56)
+            }
             OsdPosition::BottomRight => (
                 m_pos.x + (m_size.width as i32) - win_w - 32,
                 m_pos.y + (m_size.height as i32) - win_h - 56,
@@ -262,9 +261,8 @@ impl OsdManager {
 
     /// Displays or updates the On-Screen Display (OSD) volume notification overlay.
     /// Safely dispatches window operations to Tauri's main UI thread so background
-    /// input workers or IPC handlers never deadlock on WebView2 creation.
+    /// input workers or IPC handlers never deadlock on `WebView2` creation.
     pub fn show_volume(
-        &self,
         app: &AppHandle,
         config: &OsdConfig,
         level: f32,
@@ -315,8 +313,7 @@ impl OsdManager {
                 .primary_monitor()
                 .ok()
                 .flatten()
-                .map(|m| m.scale_factor() as f32)
-                .unwrap_or(1.0);
+                .map_or(1.0, |m| m.scale_factor() as f32);
             let (win_w, win_h, _) = Self::compute_dimensions(&theme_name, scale_raw, dpi_scale);
 
             let Some(osd_win) =
