@@ -105,36 +105,11 @@ jobs:
       - name: Build frontend UI
         run: npm run build
 
-      - name: Build All OS Bundles (Artifact Build)
-        if: "!startsWith(github.ref, 'refs/tags/v')"
+      - name: Build All OS Bundles
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
           NO_STRIP: "true"
         run: npx @tauri-apps/cli build ${{ matrix.args }}
-
-      - name: Build & Attach Installers to GitHub Release (Tag Release)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPIMAGE_EXTRACT_AND_RUN: "1"
-          NO_STRIP: "true"
-          ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Volume 3 ${{ github.ref_name }}"
-          releaseBody: "Download Volume 3 installers for Windows (.exe, .msi), Linux (.deb, .rpm, .AppImage), and macOS (.dmg, .app.tar.gz)."
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
 
       - name: Archive macOS .app bundle
         if: matrix.platform == 'macos-latest'
@@ -196,6 +171,9 @@ jobs:
     needs: build-installers
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Download all OS build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -220,9 +198,21 @@ jobs:
           name: volume-3-all-os-installers
           path: all-os-installers/*
 
-      - name: Upload SHA256SUMS to GitHub Release (Tag Release)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish GitHub Release & Upload All OS Installers
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release upload "${{ github.ref_name }}" all-os-installers/SHA256SUMS.txt all-os-installers/Volume-3-portable-x64.exe all-os-installers/Volume-3-macOS-Universal.app.tar.gz --clobber || true
+          TAG="${{ github.ref_name }}"
+          case "$TAG" in
+            v*) ;;
+            *) TAG="v$(node -p "require('./package.json').version")" ;;
+          esac
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "${{ github.sha }}" \
+              --title "Volume 3 $TAG" \
+              --notes "Download Volume 3 installers for Windows (.exe, .msi, portable), Linux (.deb, .rpm, .AppImage), and macOS Universal (.dmg, .app.tar.gz)."
+          fi
+          gh release upload "$TAG" all-os-installers/* --clobber
