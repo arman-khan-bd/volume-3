@@ -22,6 +22,8 @@ pub trait InputHook: Send + Sync {
     fn stop(&mut self) -> Result<(), String>;
     fn update_zones(&self, zones: Vec<Zone>);
     fn update_osd(&self, _osd: crate::config::OsdConfig) {}
+    fn update_time_profile(&self, _tp: crate::config::TimeProfile) {}
+    fn update_fullscreen_rule(&self, _rule: crate::config::FullscreenRule) {}
 }
 
 /// Computes the volume delta percentage from a wheel event, taking into account

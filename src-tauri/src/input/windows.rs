@@ -43,7 +43,7 @@ pub fn emergency_panic_unhook() {
             let _ = UnhookWindowsHookEx(HHOOK(prev as *mut _));
         }
     }
-    log::warn!("EMERGENCY PANIC: Windows mouse hooks removed and VolZone disengaged.");
+    log::warn!("EMERGENCY PANIC: Windows mouse hooks removed and Volume 3 disengaged.");
 }
 
 pub fn reset_panic_state() {
@@ -63,7 +63,8 @@ struct GlobalHookState {
     zones: RwLock<Vec<Zone>>,
     fullscreen_rule: RwLock<FullscreenRule>,
     osd_config: RwLock<OsdConfig>,
-    sender: Sender<InputEvent>,
+    time_profile: RwLock<TimeProfile>,
+    sender: RwLock<Sender<InputEvent>>,
 }
 
 static HOOK_STATE: OnceLock<GlobalHookState> = OnceLock::new();
@@ -106,53 +107,64 @@ unsafe extern "system" fn low_level_mouse_proc(
             };
 
             let matched_zone = if let Ok(zones_guard) = state.zones.read() {
-                hit_test(&zones_guard, px, py, ctrl, alt, shift, meta).cloned()
+                let res = hit_test(&zones_guard, px, py, ctrl, alt, shift, meta).cloned();
+                if res.is_some() {
+                    log::info!("MouseHook: wheel/click at ({px}, {py}) matched zone '{}'", res.as_ref().unwrap().name);
+                } else if msg == WM_MOUSEWHEEL {
+                    log::debug!("MouseHook: wheel at ({px}, {py}) did not match any zone (zones={})", zones_guard.len());
+                }
+                res
             } else {
                 None
             };
 
             if let Some(zone) = matched_zone {
-                // 1. Middle-click to mute
-                if msg == WM_MBUTTONDOWN {
-                    if zone.middle_click_to_mute {
-                        let _ = state.sender.try_send(InputEvent::MuteToggle {
-                            zone_id: zone.id.clone(),
-                        });
-                        return LRESULT(1); // Swallow middle click only when configured
-                    }
-                    return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
-                }
-
-                let raw_delta = (info.mouseData >> 16) as i16 as f32;
-
-                // 2. Horizontal wheel tilt handling
-                if msg == WM_MOUSEHWHEEL {
-                    match zone.horizontal_action {
-                        HorizontalWheelAction::MediaTrack => {
-                            let next = raw_delta > 0.0;
-                            send_media_key(next);
-                            return LRESULT(1);
+                if let Ok(sender_guard) = state.sender.read() {
+                    // 1. Middle-click to mute
+                    if msg == WM_MBUTTONDOWN {
+                        if zone.middle_click_to_mute {
+                            let _ = sender_guard.try_send(InputEvent::MuteToggle {
+                                zone_id: zone.id.clone(),
+                            });
+                            return LRESULT(1); // Swallow middle click only when configured
                         }
-                        HorizontalWheelAction::Balance | HorizontalWheelAction::None => {
-                            // Passed through or handled as horizontal
+                        return unsafe { CallNextHookEx(None, n_code, w_param, l_param) };
+                    }
+
+                    let raw_delta = (info.mouseData >> 16) as i16 as f32;
+
+                    // 2. Horizontal wheel tilt handling
+                    if msg == WM_MOUSEHWHEEL {
+                        match zone.horizontal_action {
+                            HorizontalWheelAction::MediaTrack => {
+                                let next = raw_delta > 0.0;
+                                send_media_key(next);
+                                return LRESULT(1);
+                            }
+                            HorizontalWheelAction::Balance | HorizontalWheelAction::None => {
+                                // Passed through or handled as horizontal
+                            }
                         }
                     }
+
+                    // 3. Vertical wheel event
+                    let event = WheelEvent {
+                        zone_id: zone.id.clone(),
+                        raw_delta,
+                        is_horizontal: msg == WM_MOUSEHWHEEL,
+                        shift_down: shift,
+                        ctrl_down: ctrl,
+                        alt_down: alt,
+                        meta_down: meta,
+                        timestamp_ms: info.time as u64,
+                    };
+
+                    let res = sender_guard.try_send(InputEvent::Wheel(event));
+                    if let Err(e) = res {
+                        log::warn!("Low-level hook failed to send wheel event: {e}");
+                    }
+                    return LRESULT(1); // Swallow wheel inside zone
                 }
-
-                // 3. Vertical wheel event
-                let event = WheelEvent {
-                    zone_id: zone.id.clone(),
-                    raw_delta,
-                    is_horizontal: msg == WM_MOUSEHWHEEL,
-                    shift_down: shift,
-                    ctrl_down: ctrl,
-                    alt_down: alt,
-                    meta_down: meta,
-                    timestamp_ms: info.time as u64,
-                };
-
-                let _ = state.sender.try_send(InputEvent::Wheel(event));
-                return LRESULT(1); // Swallow wheel inside zone
             }
         }
     }
@@ -197,6 +209,7 @@ pub struct WindowsInputHook {
     hook_thread_id: Option<u32>,
     worker_handle: Option<thread::JoinHandle<()>>,
     event_sender: Sender<InputEvent>,
+    event_receiver: Option<Receiver<InputEvent>>,
     app_handle: Option<AppHandle>,
 }
 
@@ -208,7 +221,8 @@ impl WindowsInputHook {
             zones: RwLock::new(Vec::new()),
             fullscreen_rule: RwLock::new(FullscreenRule::default()),
             osd_config: RwLock::new(OsdConfig::default()),
-            sender: sender.clone(),
+            time_profile: RwLock::new(TimeProfile::default()),
+            sender: RwLock::new(sender.clone()),
         });
 
         Self {
@@ -216,26 +230,29 @@ impl WindowsInputHook {
             hook_thread_id: None,
             worker_handle: None,
             event_sender: sender,
+            event_receiver: Some(receiver),
             app_handle: None,
         }
     }
 
     pub fn set_app_handle(&mut self, app: AppHandle) {
-        self.app_handle = Some(app.clone());
-        let receiver = {
-            let (tx, rx) = bounded::<InputEvent>(128);
-            // Re-hook channel if needed or spawn loop
-            rx
-        };
+        self.app_handle = Some(app);
     }
 
     pub fn start_with_app(&mut self, app: AppHandle) -> Result<(), String> {
         self.app_handle = Some(app.clone());
-        let (sender, receiver) = bounded::<InputEvent>(128);
-
-        if let Some(state) = HOOK_STATE.get() {
-            // Replace sender in hook state
-        }
+        let receiver = if let Some(rx) = self.event_receiver.take() {
+            rx
+        } else {
+            let (sender, receiver) = bounded::<InputEvent>(128);
+            if let Some(state) = HOOK_STATE.get() {
+                if let Ok(mut guard) = state.sender.write() {
+                    *guard = sender.clone();
+                }
+            }
+            self.event_sender = sender;
+            receiver
+        };
 
         let worker_app = app.clone();
         let worker_handle = thread::Builder::new()
@@ -417,13 +434,18 @@ impl WindowsInputHook {
                     if let Ok(curr_vol) = backend.get_volume(&target) {
                         let target_vol =
                             calculate_new_volume(curr_vol, step, is_up, zone.invert, 1.0);
+                        let time_cap = state
+                            .time_profile
+                            .read()
+                            .ok()
+                            .and_then(|tp| tp.current_cap());
                         let final_vol = apply_volume_limits(
                             target_vol,
                             curr_vol,
                             zone.min_volume,
                             zone.max_volume,
                             zone.soft_start_limit,
-                            TimeProfile::default().current_cap(),
+                            time_cap,
                         );
 
                         if let Err(err) = backend.set_volume(&target, final_vol) {
@@ -432,16 +454,23 @@ impl WindowsInputHook {
                                 zone.name
                             );
                         } else {
+                            log::info!(
+                                "Volume updated for zone '{}': {:.0}% -> {:.0}%",
+                                zone.name,
+                                curr_vol * 100.0,
+                                final_vol * 100.0
+                            );
+
                             // Zone tint pulse feedback
                             if zone.pulse_tint {
                                 let _ = app.emit("zone-pulse", zone.id.clone());
                             }
 
-                            let osd_cfg = if let Some(state) = HOOK_STATE.get() {
-                                state.osd_config.read().map(|g| g.clone()).unwrap_or_default()
-                            } else {
-                                OsdConfig::default()
-                            };
+                            let osd_cfg = state
+                                .osd_config
+                                .read()
+                                .map(|g| g.clone())
+                                .unwrap_or_default();
 
                             // Show OSD feedback
                             osd_manager.show_volume(
@@ -586,6 +615,22 @@ impl InputHook for WindowsInputHook {
         if let Some(state) = HOOK_STATE.get() {
             if let Ok(mut guard) = state.osd_config.write() {
                 *guard = osd;
+            }
+        }
+    }
+
+    fn update_time_profile(&self, tp: TimeProfile) {
+        if let Some(state) = HOOK_STATE.get() {
+            if let Ok(mut guard) = state.time_profile.write() {
+                *guard = tp;
+            }
+        }
+    }
+
+    fn update_fullscreen_rule(&self, rule: FullscreenRule) {
+        if let Some(state) = HOOK_STATE.get() {
+            if let Ok(mut guard) = state.fullscreen_rule.write() {
+                *guard = rule;
             }
         }
     }

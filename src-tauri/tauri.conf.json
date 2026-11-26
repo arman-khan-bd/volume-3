@@ -1,13 +1,15 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "VolZone",
+  "productName": "Volume 3",
+  "mainBinaryName": "volume-3",
   "version": "0.1.0",
-  "identifier": "com.volzone.app",
+  "identifier": "com.volume3.app",
   "build": {
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../ui/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [],
     "security": {
       "csp": null
@@ -34,7 +36,7 @@
         ],
         "installerHooks": "nsis/hooks.nsi",
         "installerIcon": "icons/icon.ico",
-        "startMenuFolder": "VolZone"
+        "startMenuFolder": "Volume 3"
       },
       "wix": {
         "language": [
@@ -50,7 +52,6 @@
       "minimumSystemVersion": "12.0",
       "hardenedRuntime": true,
       "entitlements": "entitlements.plist",
-      "infoPlist": "Info.plist",
       "dmg": {
         "windowSize": {
           "width": 640,
@@ -74,7 +75,7 @@
           "libx11-6",
           "libxtst6"
         ],
-        "desktopTemplate": "volzone.desktop",
+        "desktopTemplate": "volume-3.desktop",
         "section": "sound",
         "priority": "optional"
       },
@@ -87,7 +88,7 @@
           "libX11",
           "libXtst"
         ],
-        "desktopTemplate": "volzone.desktop"
+        "desktopTemplate": "volume-3.desktop"
       },
       "appimage": {
         "bundleMediaFramework": false
@@ -98,7 +99,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExMjIzMzQ0NTU2Njc3ODgKUldRYVl1aXRkZDRrOEp4K1Z0UWl4NlFrcnZkMDRhRklhZ1l5U3A3OHZlVkVCS05oYkRjWUt1U0oK",
       "endpoints": [
-        "https://github.com/volzone/volzone/releases/latest/download/latest.json"
+        "https://github.com/arman-khan-bd/volume-3/releases/latest/download/latest.json"
       ]
     }
   }

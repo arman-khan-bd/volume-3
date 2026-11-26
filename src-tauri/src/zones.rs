@@ -527,8 +527,8 @@ pub fn create_zone_window(
             zone.rect.height,
         )));
         let _ = apply_platform_window_traits(&existing, edit_mode);
+        let _ = existing.show();
         if edit_mode {
-            let _ = existing.show();
             let _ = existing.set_always_on_top(true);
         }
         return Ok(existing);
@@ -560,8 +560,8 @@ pub fn create_zone_window(
         log::warn!("Failed to apply platform window traits to {label}: {err}");
     }
 
+    let _ = window.show();
     if edit_mode {
-        let _ = window.show();
         let _ = window.set_always_on_top(true);
     }
 

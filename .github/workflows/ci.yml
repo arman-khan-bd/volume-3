@@ -92,22 +92,22 @@ jobs:
         if: github.event_name == 'pull_request' && matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: volzone-windows-debug
-          path: src-tauri/target/debug/volzone.exe
+          name: volume-3-windows-debug
+          path: src-tauri/target/debug/volume-3.exe
           if-no-files-found: warn
 
       - name: Upload PR build artifact (macOS)
         if: github.event_name == 'pull_request' && matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: volzone-macos-debug
-          path: src-tauri/target/debug/volzone
+          name: volume-3-macos-debug
+          path: src-tauri/target/debug/volume-3
           if-no-files-found: warn
 
       - name: Upload PR build artifact (Linux)
         if: github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')
         uses: actions/upload-artifact@v4
         with:
-          name: volzone-linux-debug
-          path: src-tauri/target/debug/volzone
+          name: volume-3-linux-debug
+          path: src-tauri/target/debug/volume-3
           if-no-files-found: warn

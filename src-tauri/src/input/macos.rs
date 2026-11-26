@@ -18,7 +18,7 @@ impl MacosInputHook {
         }
     }
 
-    /// Verifies whether VolZone has been granted Accessibility / Input Monitoring permissions.
+    /// Verifies whether Volume 3 has been granted Accessibility / Input Monitoring permissions.
     pub fn is_accessibility_trusted() -> bool {
         // macOS AXIsProcessTrusted check via osascript/CLI or CoreGraphics query
         let output = Command::new("osascript")

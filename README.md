@@ -1,12 +1,13 @@
-# VolZone
+# Volume 3
 
-[![CI](https://github.com/volzone/volzone/actions/workflows/ci.yml/badge.svg)](https://github.com/volzone/volzone/actions/workflows/ci.yml)
+[![CI](https://github.com/arman-khan-bd/volume-3/actions/workflows/ci.yml/badge.svg)](https://github.com/arman-khan-bd/volume-3/actions/workflows/ci.yml)
+[![Build All OS](https://github.com/arman-khan-bd/volume-3/actions/workflows/release.yml/badge.svg)](https://github.com/arman-khan-bd/volume-3/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen)](https://github.com/volzone/volzone)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-brightgreen)](https://github.com/arman-khan-bd/volume-3)
 
-**VolZone** is an open-source, ultra-lightweight cross-platform desktop application inspired by Volume2. Instead of relying on a tiny taskbar icon or reaching for dedicated multimedia keys, VolZone allows you to place transparent, customizable screen overlay zones anywhere on your display. 
+**Volume 3** is an open-source, lightweight cross-platform desktop application inspired by Volume². Instead of hunting for a tiny tray icon or media keys, Volume 3 lets you place transparent scroll-wheel zones anywhere on your screen (such as over the Windows Taskbar, screen edges, or custom floating regions).
 
-Rotating your mouse scroll wheel over an active zone instantly adjusts system or application audio levels. All mouse moves, clicks, drags, double-clicks, and hover states pass through transparently to the windows beneath.
+Rolling your mouse scroll wheel over an active zone adjusts system, microphone, or application audio immediately with 18 customizable On-Screen Display (OSD) styles, while clicks, drags, and hover events pass right through to the windows underneath.
 
 ---
 
@@ -45,44 +46,43 @@ Rotating your mouse scroll wheel over an active zone instantly adjusts system or
 
 ## 📦 Installation & Download
 
+Download prebuilt packages from the [Releases](https://github.com/arman-khan-bd/volume-3/releases) page or the latest [GitHub Actions](https://github.com/arman-khan-bd/volume-3/actions) workflow artifacts.
+
 ### Windows (10 / 11)
-- **Standard Installer (NSIS)**: `VolZone_<version>_x64-setup.exe` (~3.5 – 5.2 MB)
-  - Installs for current user in `%LOCALAPPDATA%\Programs\VolZone` (No UAC / Admin required).
-  - Supports silent enterprise installation:
+- **Standard Installer (NSIS)**: `Volume 3_<version>_x64-setup.exe`
+  - Installs for current user in `%LOCALAPPDATA%\Volume 3` (No UAC / Admin required).
+  - Supports silent installation:
     ```powershell
-    VolZone_0.1.0_x64-setup.exe /S /D=C:\CustomPath
+    "Volume 3_0.1.0_x64-setup.exe" /S /D=C:\CustomPath
     ```
-- **Enterprise MSI (WiX)**: `VolZone_<version>_x64.msi` (~4.2 – 6.0 MB)
-  - Ideal for Active Directory / Group Policy deployment.
-- **Offline NSIS Installer**: Bundled with offline WebView2 runtime (~140 – 160 MB).
+- **Enterprise MSI (WiX)**: `Volume 3_<version>_x64_en-US.msi`
+- **Portable Executable**: `Volume-3-portable-x64.exe`
 
 ### macOS (12+ Monterey, Ventura, Sonoma, Sequoia)
-- **Universal DMG**: `VolZone_<version>_universal.dmg` (~7.5 – 11.5 MB)
-  - Contains universal binary supporting both **Apple Silicon** (M1/M2/M3/M4) and **Intel** (x86_64).
-  - Open DMG, drag `VolZone.app` into `Applications`.
+- **Universal DMG**: `Volume 3_<version>_universal.dmg` (Apple Silicon + Intel)
+- **Universal App Archive**: `Volume-3-macOS-Universal.app.tar.gz`
 
 > [!IMPORTANT]
 > **macOS Accessibility & Input Monitoring Permissions**:
-> macOS requires explicit user permission for low-level scroll-wheel interception:
 > 1. Open **System Settings** -> **Privacy & Security** -> **Accessibility**.
-> 2. Enable **VolZone** in the list.
-> 3. Navigate to **Input Monitoring** and ensure **VolZone** is enabled.
-> 4. Restart VolZone if prompted.
+> 2. Enable **Volume 3** in the list.
+> 3. Navigate to **Input Monitoring** and ensure **Volume 3** is enabled.
+> 4. Restart Volume 3 if prompted.
 
 ### Linux (X11 & Wayland)
-- **Debian / Ubuntu**: `volzone_<version>_amd64.deb` (~4.0 – 6.5 MB)
+- **Debian / Ubuntu**: `volume-3_<version>_amd64.deb`
   ```bash
-  sudo dpkg -i volzone_0.1.0_amd64.deb
+  sudo dpkg -i volume-3_0.1.0_amd64.deb
   sudo apt-get install -f
   ```
-- **Fedora / RHEL**: `volzone-<version>-1.x86_64.rpm` (~4.0 – 6.5 MB)
+- **Fedora / RHEL**: `volume-3-<version>-1.x86_64.rpm`
   ```bash
-  sudo dnf install ./volzone-0.1.0-1.x86_64.rpm
+  sudo dnf install ./volume-3-0.1.0-1.x86_64.rpm
   ```
-- **Portable AppImage**: `VolZone_<version>_amd64.AppImage` (~12.0 – 16.0 MB)
+- **Portable AppImage**: `volume-3_<version>_amd64.AppImage`
   ```bash
-  chmod +x VolZone_0.1.0_amd64.AppImage
-  ./VolZone_0.1.0_amd64.AppImage
+  chmod +x volume-3_0.1.0_amd64.AppImage
+  ./volume-3_0.1.0_amd64.AppImage
   ```
 
 > [!NOTE]
@@ -99,9 +99,9 @@ Rotating your mouse scroll wheel over an active zone instantly adjusts system or
 ## ⚙️ Configuration Reference (`config.json`)
 
 Configuration files are stored in the OS standard directory:
-- **Windows**: `%APPDATA%\VolZone\config.json`
-- **macOS**: `~/Library/Application Support/VolZone/config.json`
-- **Linux**: `~/.config/volzone/config.json`
+- **Windows**: `%APPDATA%\Volume 3\config.json`
+- **macOS**: `~/Library/Application Support/Volume 3/config.json`
+- **Linux**: `~/.config/volume-3/config.json`
 
 ```json
 {
@@ -179,8 +179,8 @@ Configuration files are stored in the OS standard directory:
 
 ```bash
 # 1. Clone repository
-git clone https://github.com/volzone/volzone.git
-cd volzone
+git clone https://github.com/arman-khan-bd/volume-3.git
+cd volume-3
 
 # 2. Install frontend dependencies
 npm ci

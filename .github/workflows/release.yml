@@ -1,34 +1,48 @@
-name: Release
+name: Build All OS Installers & Release
 
 on:
   push:
+    branches: ["main"]
     tags:
       - "v*.*.*"
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: "Publish a GitHub Release when running manually (leave false for artifacts only)"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: build-installers-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
-  build-release:
-    name: Build Release Package (${{ matrix.platform }})
+  build-installers:
+    name: Build Installers (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest
+          - label: "Windows (.exe & .msi)"
+            platform: windows-latest
             target: x86_64-pc-windows-msvc
-            args: ""
-          - platform: macos-latest
-            target: universal-apple-darwin
-            args: "--target universal-apple-darwin"
-          - platform: ubuntu-22.04
+            args: "--bundles nsis,msi"
+            artifact: volume-3-windows-exe-msi
+          - label: "Linux (.deb, .rpm & .AppImage)"
+            platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            args: ""
+            args: "--bundles deb,rpm,appimage"
+            artifact: volume-3-linux-deb-rpm-appimage
+          - label: "macOS Universal (.dmg & .app)"
+            platform: macos-latest
+            target: universal-apple-darwin
+            args: "--target universal-apple-darwin --bundles dmg,app"
+            artifact: volume-3-macos-dmg-app
 
     runs-on: ${{ matrix.platform }}
 
@@ -42,13 +56,13 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install Rust Toolchain (Universal for macOS)
+      - name: Install Rust Toolchain (macOS Universal)
         if: matrix.platform == 'macos-latest'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
 
-      - name: Install Rust Toolchain (Default for Windows & Linux)
+      - name: Install Rust Toolchain (Windows & Linux)
         if: matrix.platform != 'macos-latest'
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -59,7 +73,7 @@ jobs:
         with:
           workspaces: src-tauri -> target
 
-      - name: Install Linux dependencies
+      - name: Install Linux packaging dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
@@ -79,18 +93,32 @@ jobs:
             libxtst-dev \
             libxdo-dev \
             libevdev-dev \
-            libssl-dev
+            libssl-dev \
+            rpm \
+            squashfs-tools \
+            libfuse2 \
+            xdg-utils
 
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and typecheck UI
+      - name: Build frontend UI
         run: npm run build
 
-      - name: Build Tauri bundles
+      - name: Build All OS Bundles (Artifact Build)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
+        run: npx @tauri-apps/cli build ${{ matrix.args }}
+
+      - name: Build & Attach Installers to GitHub Release (Tag Release)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
           ENABLE_CODE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -102,40 +130,56 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "VolZone ${{ github.ref_name }}"
-          releaseBody: "See the assets below to download VolZone for your operating system."
-          releaseDraft: true
+          releaseName: "Volume 3 ${{ github.ref_name }}"
+          releaseBody: "Download Volume 3 installers for Windows (.exe, .msi), Linux (.deb, .rpm, .AppImage), and macOS (.dmg, .app.tar.gz)."
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
-      - name: Calculate bundle sizes (Windows)
+      - name: Archive macOS .app bundle
+        if: matrix.platform == 'macos-latest'
+        run: |
+          mkdir -p src-tauri/target/universal-apple-darwin/release/bundle/macos
+          if [ -d "src-tauri/target/universal-apple-darwin/release/bundle/macos/Volume 3.app" ]; then
+            tar -czf "src-tauri/target/universal-apple-darwin/release/bundle/macos/Volume-3-macOS-Universal.app.tar.gz" \
+              -C "src-tauri/target/universal-apple-darwin/release/bundle/macos" "Volume 3.app"
+          fi
+
+      - name: Package portable Windows .exe copy
         if: matrix.platform == 'windows-latest'
         shell: powershell
         run: |
-          echo "### Windows Release Artifacts" >> $env:GITHUB_STEP_SUMMARY
-          echo "| File | Size (MB) |" >> $env:GITHUB_STEP_SUMMARY
+          New-Item -ItemType Directory -Force -Path "src-tauri/target/release/bundle/portable" | Out-Null
+          Copy-Item "src-tauri/target/release/volume-3.exe" "src-tauri/target/release/bundle/portable/Volume-3-portable-x64.exe" -Force
+
+      - name: Summarize Built Installers (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: powershell
+        run: |
+          echo "### Windows Installers" >> $env:GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $env:GITHUB_STEP_SUMMARY
           echo "| :--- | :--- |" >> $env:GITHUB_STEP_SUMMARY
-          Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -Include *.exe,*.msi,*.zip | ForEach-Object {
+          Get-ChildItem -Path "src-tauri/target/release/bundle" -Recurse -Include *.exe,*.msi | ForEach-Object {
             $mb = [math]::Round($_.Length / 1MB, 2)
             echo "| $($_.Name) | $mb MB |" >> $env:GITHUB_STEP_SUMMARY
           }
 
-      - name: Calculate bundle sizes (Linux & macOS)
+      - name: Summarize Built Installers (Linux & macOS)
         if: matrix.platform != 'windows-latest'
         run: |
-          echo "### ${{ matrix.platform }} Release Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "| File | Size (MB) |" >> $GITHUB_STEP_SUMMARY
+          echo "### ${{ matrix.label }}" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
           echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-          find src-tauri/target/ -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.tar.gz" \) | while read file; do
+          find src-tauri/target/ -type f \( -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.tar.gz" \) | while read -r file; do
             filename=$(basename "$file")
-            filesize=$(du -m "$file" | cut -f1)
-            echo "| $filename | ${filesize} MB |" >> $GITHUB_STEP_SUMMARY
+            filesize=$(du -h "$file" | cut -f1)
+            echo "| $filename | $filesize |" >> $GITHUB_STEP_SUMMARY
           done
 
-      - name: Upload bundle artifacts
+      - name: Upload OS Installers Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-bundles-${{ matrix.platform }}
+          name: ${{ matrix.artifact }}
           path: |
             src-tauri/target/**/bundle/**/*.exe
             src-tauri/target/**/bundle/**/*.msi
@@ -145,42 +189,40 @@ jobs:
             src-tauri/target/**/bundle/**/*.AppImage
             src-tauri/target/**/bundle/**/*.tar.gz
             src-tauri/target/**/bundle/**/*.sig
-          if-no-files-found: ignore
+          if-no-files-found: warn
 
-  finalize-release:
-    name: Generate Checksums & Publish Release
-    needs: build-release
+  collect-and-checksums:
+    name: Collect All OS Packages & Generate SHA256SUMS
+    needs: build-installers
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Download all release artifacts
+      - name: Download all OS build artifacts
         uses: actions/download-artifact@v4
         with:
           path: release-artifacts
 
-      - name: Generate SHA256 Checksums
+      - name: Collect installers and compute SHA256SUMS
         run: |
-          mkdir -p dist-assets
-          find release-artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.tar.gz" \) -exec cp {} dist-assets/ \;
-          cd dist-assets
+          mkdir -p all-os-installers
+          find release-artifacts -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.tar.gz" \) -exec cp {} all-os-installers/ \;
+          cd all-os-installers
           sha256sum * > SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          echo "## Volume 3 — Built Installers Across All Operating Systems" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          ls -lh >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat SHA256SUMS.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Generate Changelog and Summary
-        run: |
-          echo "## Release Assets & Checksums" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          cat dist-assets/SHA256SUMS.txt >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      - name: Upload combined all-OS installers artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: volume-3-all-os-installers
+          path: all-os-installers/*
 
-      - name: Upload SHA256SUMS to GitHub Release
+      - name: Upload SHA256SUMS to GitHub Release (Tag Release)
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -n "${{ github.ref_name }}" ]; then
-            gh release upload "${{ github.ref_name }}" dist-assets/SHA256SUMS.txt --clobber || true
-          fi
+          gh release upload "${{ github.ref_name }}" all-os-installers/SHA256SUMS.txt all-os-installers/Volume-3-portable-x64.exe all-os-installers/Volume-3-macOS-Universal.app.tar.gz --clobber || true

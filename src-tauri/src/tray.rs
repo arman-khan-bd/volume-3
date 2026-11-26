@@ -52,7 +52,7 @@ pub fn setup_tray(app: &AppHandle, settings: &Settings) -> Result<TrayIcon<Wry>,
         None::<&str>,
     )?;
     let sep2 = PredefinedMenuItem::separator(app)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit VolZone", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit Volume 3", true, None::<&str>)?;
 
     let menu = Menu::with_items(
         app,
@@ -85,7 +85,7 @@ pub fn setup_tray(app: &AppHandle, settings: &Settings) -> Result<TrayIcon<Wry>,
 
     let tray = TrayIconBuilder::new()
         .icon(icon)
-        .tooltip("VolZone - Master: Ready")
+        .tooltip("Volume 3 - Master: Ready")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_tray_icon_event(|tray, event| {

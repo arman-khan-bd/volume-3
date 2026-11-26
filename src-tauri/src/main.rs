@@ -34,9 +34,9 @@ pub fn open_settings_window(app: &AppHandle) -> Result<(), String> {
 
     let url = WebviewUrl::App("index.html".into());
     WebviewWindowBuilder::new(app, "settings", url)
-        .title("VolZone Settings")
-        .inner_size(740.0, 840.0)
-        .min_inner_size(580.0, 640.0)
+        .title("Volume 3")
+        .inner_size(780.0, 560.0)
+        .min_inner_size(640.0, 460.0)
         .resizable(true)
         .center()
         .build()
@@ -58,8 +58,8 @@ pub fn toggle_edit_mode_internal(app: &AppHandle, state: &AppState) -> Result<bo
         let label = zone.window_label();
         if let Some(win) = app.get_webview_window(&label) {
             let _ = apply_platform_window_traits(&win, edit_mode);
+            let _ = win.show();
             if edit_mode {
-                let _ = win.show();
                 let _ = win.set_always_on_top(true);
             }
         } else {
@@ -80,7 +80,7 @@ pub fn panic_shutdown_internal(app: &AppHandle, state: &AppState) -> Result<(), 
     }
 
     if let Some(tray) = app.tray_by_id("main") {
-        let _ = tray.set_tooltip(Some("VolZone [EMERGENCY PANIC: Hooks Removed]"));
+        let _ = tray.set_tooltip(Some("Volume 3 [EMERGENCY PANIC: Hooks Removed]"));
     }
 
     let _ = app.emit("panic-triggered", ());
@@ -98,7 +98,7 @@ pub fn unpanic_internal(app: &AppHandle, state: &AppState) -> Result<(), String>
     }
 
     if let Some(tray) = app.tray_by_id("main") {
-        let _ = tray.set_tooltip(Some("VolZone - Master: Ready"));
+        let _ = tray.set_tooltip(Some("Volume 3 - Master: Ready"));
     }
 
     let _ = app.emit("panic-cleared", ());
@@ -123,6 +123,8 @@ pub fn save_settings_internal(
     if let Ok(hook) = state.input_hook.lock() {
         hook.update_zones(new_settings.zones.clone());
         hook.update_osd(new_settings.osd.clone());
+        hook.update_time_profile(new_settings.time_profile.clone());
+        hook.update_fullscreen_rule(new_settings.fullscreen_rule.clone());
     }
 
     let edit_mode = new_settings.edit_mode;
@@ -204,7 +206,12 @@ fn get_zone_config(state: State<AppState>, zone_id: String) -> Result<Option<Zon
     Ok(settings
         .zones
         .iter()
-        .find(|z| z.id == zone_id || z.window_label() == zone_id || z.id == clean_id)
+        .find(|z| {
+            z.id == zone_id
+                || z.window_label() == zone_id
+                || z.id == clean_id
+                || z.window_label() == format!("zone-{}", zone_id)
+        })
         .cloned())
 }
 
@@ -232,8 +239,8 @@ fn set_edit_mode(app: AppHandle, state: State<AppState>, enabled: bool) -> Resul
         let label = zone.window_label();
         if let Some(win) = app.get_webview_window(&label) {
             let _ = apply_platform_window_traits(&win, enabled);
+            let _ = win.show();
             if enabled {
-                let _ = win.show();
                 let _ = win.set_always_on_top(true);
             }
         } else {
@@ -252,6 +259,8 @@ fn trigger_osd(
     state: State<AppState>,
     theme: Option<String>,
     position: Option<config::OsdPosition>,
+    accent_color: Option<String>,
+    scale: Option<f32>,
 ) -> Result<(), String> {
     let settings = state.settings.lock().map_err(|e| e.to_string())?;
     let mut osd_cfg = settings.osd.clone();
@@ -261,10 +270,35 @@ fn trigger_osd(
     if let Some(p) = position {
         osd_cfg.position = p;
     }
+    if let Some(c) = accent_color {
+        osd_cfg.accent_color = c;
+    }
+    if let Some(s) = scale {
+        osd_cfg.scale = s;
+    }
     osd_cfg.enabled = true;
+    let vol = get_master_volume().unwrap_or(0.65);
+    let muted = get_master_mute().unwrap_or(false);
     let osd_manager = osd::OsdManager::new();
-    osd_manager.show_volume(&app, &osd_cfg, 0.65, false, "VolZone OSD Test");
+    osd_manager.show_volume(&app, &osd_cfg, vol, muted, "Master Volume");
     Ok(())
+}
+
+#[tauri::command]
+fn get_last_osd() -> Option<osd::OsdPayload> {
+    osd::get_recent_osd_payload()
+}
+
+#[tauri::command]
+fn hide_osd_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("volzone-osd") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+fn osd_debug_log(msg: String) {
+    log::info!("[OSD WebView] {msg}");
 }
 
 #[tauri::command]
@@ -319,11 +353,12 @@ fn update_zone_rect(
 ) -> Result<(), String> {
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
     let clean_id = zone_id.trim_start_matches("zone-");
-    if let Some(zone) = settings
-        .zones
-        .iter_mut()
-        .find(|z| z.id == zone_id || z.window_label() == zone_id || z.id == clean_id)
-    {
+    if let Some(zone) = settings.zones.iter_mut().find(|z| {
+        z.id == zone_id
+            || z.window_label() == zone_id
+            || z.id == clean_id
+            || z.window_label() == format!("zone-{}", zone_id)
+    }) {
         zone.rect = rect;
 
         if let Some(win) = app.get_webview_window(&zone.window_label()) {
@@ -412,74 +447,56 @@ fn set_autostart_enabled(
     app: AppHandle,
     state: State<AppState>,
     enabled: bool,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     if enabled {
-        let _ = app.autolaunch().enable();
+        app.autolaunch()
+            .enable()
+            .map_err(|e| format!("Failed to enable auto-start: {e}"))?;
     } else {
-        let _ = app.autolaunch().disable();
+        app.autolaunch()
+            .disable()
+            .map_err(|e| format!("Failed to disable auto-start: {e}"))?;
     }
 
+    let actual = app.autolaunch().is_enabled().unwrap_or(enabled);
     let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-    settings.start_at_login = enabled;
+    settings.start_at_login = actual;
+    settings.autostart_initialized = true;
     let _ = config::save_config(&settings);
-    Ok(())
+    log::info!("Auto-start set to {actual} (requested {enabled})");
+    Ok(actual)
+}
+
+fn create_volume_backend() -> Result<Box<dyn VolumeBackend>, String> {
+    #[cfg(target_os = "windows")]
+    return Ok(Box::new(volume::WindowsVolumeController::new()?));
+    #[cfg(target_os = "macos")]
+    return Ok(Box::new(volume::MacosVolumeController::new()?));
+    #[cfg(target_os = "linux")]
+    return Ok(Box::new(volume::LinuxVolumeController::new()?));
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    return Ok(Box::new(volume::MockBackend::new()));
 }
 
 #[tauri::command]
 fn get_master_volume() -> Result<f32, String> {
-    #[cfg(target_os = "windows")]
-    let backend = volume::WindowsVolumeController::new()?;
-    #[cfg(target_os = "macos")]
-    let backend = volume::MacosVolumeController::new()?;
-    #[cfg(target_os = "linux")]
-    let backend = volume::LinuxVolumeController::new()?;
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let backend = volume::MockBackend::new();
-
-    backend.get_volume(&VolumeTarget::Master)
+    create_volume_backend()?.get_volume(&VolumeTarget::Master)
 }
 
 #[tauri::command]
 fn set_master_volume(level: f32) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    let backend = volume::WindowsVolumeController::new()?;
-    #[cfg(target_os = "macos")]
-    let backend = volume::MacosVolumeController::new()?;
-    #[cfg(target_os = "linux")]
-    let backend = volume::LinuxVolumeController::new()?;
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let backend = volume::MockBackend::new();
-
-    backend.set_volume(&VolumeTarget::Master, level)
+    create_volume_backend()?.set_volume(&VolumeTarget::Master, level)
 }
 
 #[tauri::command]
 fn get_master_mute() -> Result<bool, String> {
-    #[cfg(target_os = "windows")]
-    let backend = volume::WindowsVolumeController::new()?;
-    #[cfg(target_os = "macos")]
-    let backend = volume::MacosVolumeController::new()?;
-    #[cfg(target_os = "linux")]
-    let backend = volume::LinuxVolumeController::new()?;
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let backend = volume::MockBackend::new();
-
-    backend.get_mute(&VolumeTarget::Master)
+    create_volume_backend()?.get_mute(&VolumeTarget::Master)
 }
 
 #[tauri::command]
 fn set_master_mute(muted: bool) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    let backend = volume::WindowsVolumeController::new()?;
-    #[cfg(target_os = "macos")]
-    let backend = volume::MacosVolumeController::new()?;
-    #[cfg(target_os = "linux")]
-    let backend = volume::LinuxVolumeController::new()?;
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let backend = volume::MockBackend::new();
-
-    backend.set_mute(&VolumeTarget::Master, muted)
+    create_volume_backend()?.set_mute(&VolumeTarget::Master, muted)
 }
 
 #[tauri::command]
@@ -490,23 +507,57 @@ fn toggle_master_mute() -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn list_audio_apps() -> Result<Vec<AppAudioSession>, String> {
-    #[cfg(target_os = "windows")]
-    let backend = volume::WindowsVolumeController::new()?;
-    #[cfg(target_os = "macos")]
-    let backend = volume::MacosVolumeController::new()?;
-    #[cfg(target_os = "linux")]
-    let backend = volume::LinuxVolumeController::new()?;
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    let backend = volume::MockBackend::new();
-
-    backend.list_apps()
+fn get_mic_volume() -> Result<f32, String> {
+    create_volume_backend()?.get_volume(&VolumeTarget::Mic)
 }
 
 #[tauri::command]
-fn test_volume(action: String) -> Result<f32, String> {
+fn set_mic_volume(level: f32) -> Result<(), String> {
+    create_volume_backend()?.set_volume(&VolumeTarget::Mic, level)
+}
+
+#[tauri::command]
+fn get_mic_mute() -> Result<bool, String> {
+    create_volume_backend()?.get_mute(&VolumeTarget::Mic)
+}
+
+#[tauri::command]
+fn set_mic_mute(muted: bool) -> Result<(), String> {
+    create_volume_backend()?.set_mute(&VolumeTarget::Mic, muted)
+}
+
+#[tauri::command]
+fn list_audio_apps() -> Result<Vec<AppAudioSession>, String> {
+    create_volume_backend()?.list_apps()
+}
+
+#[tauri::command]
+fn set_app_volume(app_id: String, level: f32) -> Result<(), String> {
+    create_volume_backend()?.set_volume(&VolumeTarget::App(app_id), level)
+}
+
+#[tauri::command]
+fn set_app_mute(app_id: String, muted: bool) -> Result<(), String> {
+    create_volume_backend()?.set_mute(&VolumeTarget::App(app_id), muted)
+}
+
+#[tauri::command]
+fn test_volume(
+    app: AppHandle,
+    state: State<AppState>,
+    action: String,
+    show_osd: Option<bool>,
+) -> Result<f32, String> {
     handle_volume_test(&action)?;
-    get_master_volume()
+    let vol = get_master_volume()?;
+    if show_osd.unwrap_or(false) {
+        if let Ok(settings) = state.settings.lock() {
+            let muted = get_master_mute().unwrap_or(false);
+            let osd_manager = osd::OsdManager::new();
+            osd_manager.show_volume(&app, &settings.osd, vol, muted, "Master Volume");
+        }
+    }
+    Ok(vol)
 }
 
 #[tauri::command]
@@ -555,7 +606,7 @@ pub fn handle_volume_test(action: &str) -> Result<(), String> {
     let initial_vol = backend.get_volume(&target)?;
     let initial_mute = backend.get_mute(&target)?;
 
-    println!("=== VolZone Volume Test ===");
+    println!("=== Volume 3 Volume Test ===");
     println!("Target: Master");
     println!(
         "Initial Volume: {:.1}% | Muted: {}",
@@ -621,6 +672,7 @@ fn main() {
     let _ = logger::init_logging(None);
 
     let args: Vec<String> = std::env::args().collect();
+    let is_minimized = args.iter().any(|arg| arg == "--minimized");
     let mut start_edit = false;
     let mut start_disabled = false;
     let mut custom_config: Option<PathBuf> = None;
@@ -629,8 +681,8 @@ fn main() {
     while i < args.len() {
         match args[i].as_str() {
             "--help" | "-h" => {
-                println!("VolZone - Transparent Screen Zone Scroll-Wheel Audio Controller\n");
-                println!("Usage: volzone [OPTIONS]\n");
+                println!("Volume 3 - Transparent Screen Zone Scroll-Wheel Audio Controller\n");
+                println!("Usage: volume-3 [OPTIONS]\n");
                 println!("Options:");
                 println!("  --edit                 Launch directly in interactive Zone Edit Mode");
                 println!("  --disable              Launch with all screen zones disabled");
@@ -681,7 +733,7 @@ fn main() {
         log::info!("Linux session type: {session}");
     }
 
-    log::info!("Starting VolZone desktop service...");
+    log::info!("Starting Volume 3 desktop service...");
 
     if let Some(ref path) = custom_config {
         log::info!("Using custom configuration path: {}", path.display());
@@ -718,7 +770,9 @@ fn main() {
                 let _ = app.emit("single-instance-edit", ());
             } else if argv.iter().any(|arg| arg == "--disable") {
                 let _ = app.emit("single-instance-disable", ());
-            } else {
+            } else if argv.iter().any(|arg| arg == "--test-osd") {
+                let _ = app.emit("single-instance-test-osd", ());
+            } else if !argv.iter().any(|arg| arg == "--minimized") {
                 let _ = app.emit("single-instance-open-settings", ());
             }
         }))
@@ -753,18 +807,53 @@ fn main() {
             get_master_mute,
             set_master_mute,
             toggle_master_mute,
+            get_mic_volume,
+            set_mic_volume,
+            get_mic_mute,
+            set_mic_mute,
             list_audio_apps,
+            set_app_volume,
+            set_app_mute,
             test_volume,
             is_elevated_admin,
             check_accessibility_permission,
             open_accessibility_settings,
-            trigger_osd
+            trigger_osd,
+            get_last_osd,
+            hide_osd_window,
+            osd_debug_log
         ])
         .setup(move |app| {
+            use tauri_plugin_autostart::ManagerExt;
             let handle = app.handle().clone();
+
+            // Automatically enable OS startup on first run, or keep registry path synced when enabled
+            if !settings.autostart_initialized {
+                match app.autolaunch().enable() {
+                    Ok(()) => {
+                        settings.start_at_login = true;
+                        settings.autostart_initialized = true;
+                        let _ = config::save_config(&settings);
+                        log::info!("Auto-start enabled automatically for current user (--minimized)");
+                    }
+                    Err(err) => {
+                        log::warn!("Could not register automatic startup: {err}");
+                    }
+                }
+            } else if settings.start_at_login && !app.autolaunch().is_enabled().unwrap_or(false) {
+                let _ = app.autolaunch().enable();
+            }
+
             let _tray = tray::setup_tray(&handle, &settings)?;
 
+            // Pre-initialize the OSD overlay window cleanly on the main thread
+            osd::OsdManager::new().init_osd_window(&handle);
+
             initialize_zone_windows(&handle, &mut settings);
+
+            if !is_minimized {
+                let _ = open_settings_window(&handle);
+            }
 
             // Setup input hook with app handle for event dispatching
             #[cfg(target_os = "windows")]
@@ -772,6 +861,8 @@ fn main() {
                 let mut win_hook = input::WindowsInputHook::new();
                 win_hook.update_zones(settings.zones.clone());
                 win_hook.update_osd(settings.osd.clone());
+                win_hook.update_time_profile(settings.time_profile.clone());
+                win_hook.update_fullscreen_rule(settings.fullscreen_rule.clone());
                 if let Err(err) = win_hook.start_with_app(handle.clone()) {
                     log::error!("Failed to start input hook: {err}");
                 }
@@ -815,7 +906,7 @@ fn main() {
 
                         // Update tray tooltip live
                         let _ = handle_for_sync.tray_by_id("main").map(|t| {
-                            let _ = t.set_tooltip(Some(format!("VolZone - {pct}%{mute_str}")));
+                            let _ = t.set_tooltip(Some(format!("Volume 3 - {pct}%{mute_str}")));
                         });
 
                         // Notify active UI windows
@@ -892,12 +983,30 @@ fn main() {
                 let _ = toggle_all_zones_internal(&handle_for_si_disable, &state);
             });
 
+            let handle_for_si_osd = handle.clone();
+            app.listen("single-instance-test-osd", move |_| {
+                let state = handle_for_si_osd.state::<AppState>();
+                let osd_cfg_opt = state.settings.lock().ok().map(|s| s.osd.clone());
+                if let Some(mut osd_cfg) = osd_cfg_opt {
+                    osd_cfg.enabled = true;
+                    let vol = get_master_volume().unwrap_or(0.65);
+                    let muted = get_master_mute().unwrap_or(false);
+                    osd::OsdManager::new().show_volume(
+                        &handle_for_si_osd,
+                        &osd_cfg,
+                        vol,
+                        muted,
+                        "Master Volume",
+                    );
+                }
+            });
+
             // Watchdog stall alert listener
             let handle_for_watchdog = handle.clone();
             app.listen("watchdog-stall-detected", move |event| {
                 log::error!("Watchdog alerted app: {:?}", event.payload());
                 if let Some(tray) = handle_for_watchdog.tray_by_id("main") {
-                    let _ = tray.set_tooltip(Some("VolZone [ERROR: Hook Stalled & Disengaged]"));
+                    let _ = tray.set_tooltip(Some("Volume 3 [ERROR: Hook Stalled & Disengaged]"));
                 }
                 let _ = handle_for_watchdog.emit("panic-triggered", ());
             });
@@ -910,5 +1019,9 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|_app_handle, _event| {});
+    app.run(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            api.prevent_exit();
+        }
+    });
 }

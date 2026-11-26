@@ -1,6 +1,6 @@
-# VolZone Manual QA & Verification Test Matrix
+# Volume 3 Manual QA & Verification Test Matrix
 
-This document defines the comprehensive manual test protocol for verifying VolZone across all supported desktop platforms, display configurations, audio servers, and edge cases.
+This document defines the comprehensive manual test protocol for verifying Volume 3 across all supported desktop platforms, display configurations, audio servers, and edge cases.
 
 ---
 

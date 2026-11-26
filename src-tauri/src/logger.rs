@@ -9,27 +9,27 @@ use std::sync::Mutex;
 const MAX_LOG_SIZE_BYTES: u64 = 2 * 1024 * 1024; // 2 MB
 const MAX_BACKUP_FILES: usize = 3;
 
-/// Resolves the standard OS log directory for VolZone:
-/// - Windows: %LOCALAPPDATA%\VolZone\logs
-/// - macOS:   ~/Library/Logs/VolZone
-/// - Linux:   ~/.local/state/volzone/logs or ~/.cache/volzone/logs
+/// Resolves the standard OS log directory for Volume 3:
+/// - Windows: %LOCALAPPDATA%\Volume 3\logs
+/// - macOS:   ~/Library/Logs/Volume 3
+/// - Linux:   ~/.local/state/volume-3/logs or ~/.cache/volume-3/logs
 pub fn get_log_dir() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
         if let Some(dir) = dirs::data_local_dir() {
-            return dir.join("VolZone").join("logs");
+            return dir.join("Volume 3").join("logs");
         }
     }
     #[cfg(target_os = "macos")]
     {
         if let Some(dir) = dirs::home_dir() {
-            return dir.join("Library").join("Logs").join("VolZone");
+            return dir.join("Library").join("Logs").join("Volume 3");
         }
     }
     #[cfg(target_os = "linux")]
     {
         if let Some(dir) = dirs::state_dir().or_else(dirs::cache_dir) {
-            return dir.join("volzone").join("logs");
+            return dir.join("volume-3").join("logs");
         }
     }
     PathBuf::from("./logs")
@@ -44,7 +44,7 @@ struct RotatingLoggerInner {
 impl RotatingLoggerInner {
     fn new(log_dir: PathBuf) -> Result<Self, std::io::Error> {
         fs::create_dir_all(&log_dir)?;
-        let main_path = log_dir.join("volzone.log");
+        let main_path = log_dir.join("volume-3.log");
         let current_size = if main_path.exists() {
             fs::metadata(&main_path)?.len()
         } else {
@@ -71,18 +71,18 @@ impl RotatingLoggerInner {
         // Close current file handle
         self.current_file = None;
 
-        let main_path = self.log_dir.join("volzone.log");
+        let main_path = self.log_dir.join("volume-3.log");
 
         // Rotate existing backup files: .2 -> .3, .1 -> .2, main -> .1
         for i in (1..MAX_BACKUP_FILES).rev() {
-            let src = self.log_dir.join(format!("volzone.log.{i}"));
-            let dst = self.log_dir.join(format!("volzone.log.{}", i + 1));
+            let src = self.log_dir.join(format!("volume-3.log.{i}"));
+            let dst = self.log_dir.join(format!("volume-3.log.{}", i + 1));
             if src.exists() {
                 let _ = fs::rename(&src, &dst);
             }
         }
 
-        let first_backup = self.log_dir.join("volzone.log.1");
+        let first_backup = self.log_dir.join("volume-3.log.1");
         if main_path.exists() {
             let _ = fs::rename(&main_path, &first_backup);
         }
@@ -263,7 +263,7 @@ mod tests {
             .write_entry(sample)
             .expect("Failed to write log entry");
 
-        let log_file = temp_dir.join("volzone.log");
+        let log_file = temp_dir.join("volume-3.log");
         assert!(log_file.exists());
         let content = fs::read_to_string(&log_file).expect("Failed to read log file");
         assert_eq!(content, sample);

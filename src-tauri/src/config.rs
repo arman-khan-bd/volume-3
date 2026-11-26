@@ -41,7 +41,15 @@ pub struct OsdConfig {
     #[serde(default = "default_true")]
     pub hide_in_fullscreen: bool,
     #[serde(default = "default_osd_theme")]
-    pub theme: String, // e.g. "modern_fluent", "cyberpunk", "macos_hud", etc.
+    pub theme: String, // e.g. "modern_fluent", "volume2_classic", "volume2_vertical", etc.
+    #[serde(default = "default_osd_accent")]
+    pub accent_color: String,
+    #[serde(default = "default_osd_scale")]
+    pub scale: f32,
+    #[serde(default = "default_true")]
+    pub show_percentage: bool,
+    #[serde(default = "default_true")]
+    pub show_target: bool,
 }
 
 const fn default_true() -> bool {
@@ -56,6 +64,14 @@ fn default_osd_theme() -> String {
     "modern_fluent".to_string()
 }
 
+fn default_osd_accent() -> String {
+    "#38bdf8".to_string()
+}
+
+const fn default_osd_scale() -> f32 {
+    1.0
+}
+
 impl Default for OsdConfig {
     fn default() -> Self {
         Self {
@@ -64,6 +80,10 @@ impl Default for OsdConfig {
             position: OsdPosition::TopCenter,
             hide_in_fullscreen: true,
             theme: default_osd_theme(),
+            accent_color: default_osd_accent(),
+            scale: default_osd_scale(),
+            show_percentage: true,
+            show_target: true,
         }
     }
 }
@@ -152,8 +172,10 @@ pub struct ZoneProfile {
 pub struct Settings {
     #[serde(default)]
     pub edit_mode: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub start_at_login: bool,
+    #[serde(default)]
+    pub autostart_initialized: bool,
     #[serde(default)]
     pub run_as_admin: bool,
     #[serde(default)]
@@ -209,7 +231,8 @@ impl Default for Settings {
         let initial_zones = default_zones();
         Self {
             edit_mode: false,
-            start_at_login: false,
+            start_at_login: true,
+            autostart_initialized: false,
             run_as_admin: false,
             osd: OsdConfig::default(),
             time_profile: TimeProfile::default(),
@@ -236,9 +259,9 @@ pub fn set_custom_config_path(path: PathBuf) {
 pub fn get_config_dir() -> Result<PathBuf, ConfigError> {
     let base = dirs::config_dir().ok_or(ConfigError::MissingConfigDir)?;
     #[cfg(target_os = "windows")]
-    let dir = base.join("VolZone");
+    let dir = base.join("Volume 3");
     #[cfg(not(target_os = "windows"))]
-    let dir = base.join("volzone");
+    let dir = base.join("volume-3");
     Ok(dir)
 }
 
@@ -253,6 +276,25 @@ pub fn get_config_path() -> Result<PathBuf, ConfigError> {
 pub fn load_config() -> Result<Settings, ConfigError> {
     let path = get_config_path()?;
     if !path.exists() {
+        // Migrate existing legacy VolZone config if present
+        if let Some(base) = dirs::config_dir() {
+            #[cfg(target_os = "windows")]
+            let legacy_path = base.join("VolZone").join("config.json");
+            #[cfg(not(target_os = "windows"))]
+            let legacy_path = base.join("volzone").join("config.json");
+
+            if legacy_path.exists() {
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if fs::copy(&legacy_path, &path).is_ok() {
+                    let contents = fs::read_to_string(&path)?;
+                    let settings: Settings = serde_json::from_str(&contents)?;
+                    return Ok(settings);
+                }
+            }
+        }
+
         let settings = Settings::default();
         let _ = save_config(&settings);
         return Ok(settings);
@@ -307,5 +349,32 @@ mod tests {
         let serialized = serde_json::to_string_pretty(&original).expect("serialize");
         let parsed: Settings = serde_json::from_str(&serialized).expect("deserialize");
         assert_eq!(original, parsed);
+        assert!(parsed.start_at_login);
+        assert!(!parsed.autostart_initialized);
+        assert_eq!(parsed.osd.accent_color, "#38bdf8");
+        assert!((parsed.osd.scale - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_legacy_config_migration_defaults() {
+        let legacy_json = r#"{
+            "edit_mode": false,
+            "osd": {
+                "enabled": true,
+                "duration_ms": 1500,
+                "position": "bottom_center",
+                "hide_in_fullscreen": true,
+                "theme": "volume2_classic"
+            },
+            "zones": []
+        }"#;
+        let parsed: Settings = serde_json::from_str(legacy_json).expect("deserialize legacy");
+        assert!(parsed.start_at_login);
+        assert!(!parsed.autostart_initialized);
+        assert_eq!(parsed.osd.theme, "volume2_classic");
+        assert_eq!(parsed.osd.accent_color, "#38bdf8");
+        assert!((parsed.osd.scale - 1.0).abs() < f32::EPSILON);
+        assert!(parsed.osd.show_percentage);
+        assert!(parsed.osd.show_target);
     }
 }

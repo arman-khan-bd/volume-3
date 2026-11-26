@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=VolZone
+Name=Volume 3
 Comment=Transparent screen zone scroll-wheel audio controller
-Exec=volzone %u
-Icon=volzone
+Exec=volume-3 %u
+Icon=volume-3
 Terminal=false
 Type=Application
 Categories=AudioVideo;Audio;Utility;

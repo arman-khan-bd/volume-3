@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.volume3.Volume3</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Volume 3</name>
+  <summary>Transparent screen zone scroll-wheel audio control</summary>
+  <description>
+    <p>
+      Volume 3 is a lightweight cross-platform desktop application that lets users place transparent,
+      customizable screen overlay zones anywhere on their display. Rotating the mouse wheel over an active
+      zone dynamically raises, lowers, or mutes audio without intercepting clicks or hovering from the windows beneath.
+    </p>
+  </description>
+  <launchable type="desktop-id">volume-3.desktop</launchable>
+  <provides>
+    <binary>volume-3</binary>
+  </provides>
+  <developer_name>Volume 3 Contributors</developer_name>
+  <url type="homepage">https://github.com/arman-khan-bd/volume-3</url>
+  <url type="bugtracker">https://github.com/arman-khan-bd/volume-3/issues</url>
+  <releases>
+    <release version="0.1.0" date="2026-11-26">
+      <description>
+        <p>Initial release of Volume 3 with compact Volume2-style UI, 18 OSD styles, auto-start, and cross-platform audio control.</p>
+      </description>
+    </release>
+  </releases>
+</component>

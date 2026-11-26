@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use windows::Win32::Foundation::PROPERTYKEY;
+use windows::Win32::Foundation::{CloseHandle, PROPERTYKEY};
 use windows::Win32::Media::Audio::Endpoints::{
     IAudioEndpointVolume, IAudioEndpointVolumeCallback, IAudioEndpointVolumeCallback_Impl,
 };
@@ -13,7 +14,41 @@ use windows::Win32::Media::Audio::{
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
 };
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 use windows_core::{implement, Interface, PCWSTR};
+
+fn resolve_process_name(pid: u32) -> Option<String> {
+    if pid == 0 {
+        return None;
+    }
+    // SAFETY: Querying process image path for friendly mixer labels using limited query access
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 260];
+        let mut size = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows_core::PWSTR(buf.as_mut_ptr()),
+            &mut size,
+        )
+        .is_ok();
+        let _ = CloseHandle(handle);
+        if !ok || size == 0 {
+            return None;
+        }
+        let path = String::from_utf16_lossy(&buf[..size as usize]);
+        let exe = std::path::Path::new(&path).file_stem()?.to_str()?;
+        let mut chars = exe.chars();
+        let friendly = match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => return None,
+        };
+        Some(friendly)
+    }
+}
 
 use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
 use crate::zones::VolumeTarget;
@@ -313,6 +348,7 @@ impl VolumeBackend for WindowsVolumeController {
                         .map_err(|e| format!("Failed to get session enumerator: {e}"))?
                 };
                 let count = unsafe { session_enum.GetCount().unwrap_or(0) };
+                let mut updated = false;
 
                 for i in 0..count {
                     // SAFETY: Enumerating session at index i
@@ -322,7 +358,10 @@ impl VolumeBackend for WindowsVolumeController {
                     };
                     if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                         let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-                        if pid.to_string() == app_id.as_str() {
+                        let matches_name = resolve_process_name(pid)
+                            .map(|n| n.eq_ignore_ascii_case(app_id.as_str()))
+                            .unwrap_or(false);
+                        if pid.to_string() == app_id.as_str() || matches_name {
                             if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                                 // SAFETY: Setting mute on target session
                                 unsafe {
@@ -330,12 +369,16 @@ impl VolumeBackend for WindowsVolumeController {
                                         .SetMute(muted, std::ptr::null())
                                         .map_err(|e| format!("Failed to mute session: {e}"))?;
                                 }
-                                return Ok(());
+                                updated = true;
                             }
                         }
                     }
                 }
-                Err(format!("Application audio session '{app_id}' not found"))
+                if updated {
+                    Ok(())
+                } else {
+                    Err(format!("Application audio session '{app_id}' not found"))
+                }
             }
         }
     }
@@ -392,6 +435,7 @@ impl VolumeBackend for WindowsVolumeController {
 
         let count = unsafe { session_enum.GetCount().unwrap_or(0) };
         let mut result = Vec::with_capacity(count as usize);
+        let mut seen_pids = HashSet::new();
 
         for i in 0..count {
             // SAFETY: Accessing session at index i
@@ -406,7 +450,7 @@ impl VolumeBackend for WindowsVolumeController {
             };
 
             let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-            if pid == 0 {
+            if pid == 0 || !seen_pids.insert(pid) {
                 continue;
             }
 
@@ -422,9 +466,10 @@ impl VolumeBackend for WindowsVolumeController {
                 (v, m)
             };
 
+            let name = resolve_process_name(pid).unwrap_or_else(|| format!("App #{pid}"));
             result.push(AppAudioSession {
                 id: pid.to_string(),
-                name: format!("Process #{pid}"),
+                name,
                 volume: vol,
                 muted,
             });
@@ -457,6 +502,7 @@ impl VolumeBackend for WindowsVolumeController {
         };
 
         let count = unsafe { session_enum.GetCount().unwrap_or(0) };
+        let mut updated = false;
         for i in 0..count {
             // SAFETY: Accessing session at index i
             let session = match unsafe { session_enum.GetSession(i) } {
@@ -466,7 +512,10 @@ impl VolumeBackend for WindowsVolumeController {
 
             if let Ok(control2) = session.cast::<IAudioSessionControl2>() {
                 let pid = unsafe { control2.GetProcessId().unwrap_or(0) };
-                if pid.to_string() == app_id {
+                let matches_name = resolve_process_name(pid)
+                    .map(|n| n.eq_ignore_ascii_case(app_id))
+                    .unwrap_or(false);
+                if pid.to_string() == app_id || matches_name {
                     if let Ok(simple_vol) = session.cast::<ISimpleAudioVolume>() {
                         // SAFETY: Setting session volume on valid ISimpleAudioVolume with null event context
                         unsafe {
@@ -474,12 +523,16 @@ impl VolumeBackend for WindowsVolumeController {
                                 .SetMasterVolume(clamped, std::ptr::null())
                                 .map_err(|e| format!("Failed to set session volume: {e}"))?;
                         }
-                        return Ok(());
+                        updated = true;
                     }
                 }
             }
         }
 
-        Err(format!("Application audio session '{app_id}' not found"))
+        if updated {
+            Ok(())
+        } else {
+            Err(format!("Application audio session '{app_id}' not found"))
+        }
     }
 }
