@@ -304,11 +304,8 @@ impl Zone {
             return true;
         }
         #[cfg(target_os = "linux")]
-        if std::env::var("XDG_SESSION_TYPE")
-            .ok()
-            .is_some_and(|s| s.eq_ignore_ascii_case("wayland"))
-        {
-            return true;
+        if let Ok(session) = std::env::var("XDG_SESSION_TYPE") {
+            return session.eq_ignore_ascii_case("wayland");
         }
         false
     }
