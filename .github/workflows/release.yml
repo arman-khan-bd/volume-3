@@ -177,7 +177,7 @@ jobs:
           done
 
       - name: Upload OS Installers Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -215,7 +215,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload combined all-OS installers artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: volume-3-all-os-installers
           path: all-os-installers/*
