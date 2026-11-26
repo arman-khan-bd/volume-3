@@ -206,6 +206,12 @@ impl OsdManager {
         let m_pos = m.position();
         let m_size = m.size();
 
+        let center = (
+            m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
+            m_pos.y + (m_size.height as i32 / 2) - (win_h / 2),
+        );
+
+        #[allow(clippy::match_same_arms)] // NearCursor falls back to Center on non-Windows
         match position {
             OsdPosition::TopCenter => (
                 m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
@@ -224,10 +230,7 @@ impl OsdManager {
                 m_pos.x + (m_size.width as i32) - win_w - 32,
                 m_pos.y + (m_size.height as i32) - win_h - 56,
             ),
-            OsdPosition::Center => (
-                m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
-                m_pos.y + (m_size.height as i32 / 2) - (win_h / 2),
-            ),
+            OsdPosition::Center => center,
             OsdPosition::NearCursor => {
                 #[cfg(target_os = "windows")]
                 {
@@ -242,18 +245,12 @@ impl OsdManager {
                             (pt.y - win_h - 16).clamp(m_pos.y + 12, max_y),
                         )
                     } else {
-                        (
-                            m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
-                            m_pos.y + (m_size.height as i32 / 2) - (win_h / 2),
-                        )
+                        center
                     }
                 }
                 #[cfg(not(target_os = "windows"))]
                 {
-                    (
-                        m_pos.x + (m_size.width as i32 / 2) - (win_w / 2),
-                        m_pos.y + (m_size.height as i32 / 2) - (win_h / 2),
-                    )
+                    center
                 }
             }
         }

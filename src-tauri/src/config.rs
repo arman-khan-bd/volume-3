@@ -145,13 +145,12 @@ impl TimeProfile {
     }
 
     pub fn current_cap(&self) -> Option<f32> {
-        if !self.enabled {
-            return None;
-        }
         #[cfg(target_os = "windows")]
-        if self.is_active_at_hour(local_hour_now()) {
+        if self.enabled && self.is_active_at_hour(local_hour_now()) {
             return Some(self.max_volume);
         }
+        #[cfg(not(target_os = "windows"))]
+        let _ = self.enabled;
         None
     }
 }

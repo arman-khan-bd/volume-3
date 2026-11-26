@@ -24,6 +24,10 @@ impl HotkeyManager {
     /// Registers the default global hotkeys:
     /// - `Ctrl+Alt+V`: Toggle Edit Mode
     /// - `Ctrl+Alt+Shift+Escape`: Emergency Panic Hotkey (instantly unhooks and disables all zones)
+    #[cfg_attr(
+        not(target_os = "windows"),
+        allow(clippy::unused_self, clippy::unnecessary_wraps)
+    )]
     pub fn register_defaults<F1, F2>(&mut self, on_toggle: F1, on_panic: F2) -> Result<(), String>
     where
         F1: Fn() + Send + Sync + 'static,

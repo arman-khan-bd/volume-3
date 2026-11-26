@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use crate::input::{InputHook, WheelEvent};
-use crate::zones::{hit_test, Zone};
+use crate::input::InputHook;
+use crate::zones::Zone;
 use std::process::Command;
 use std::sync::{Arc, RwLock};
 
@@ -43,6 +43,7 @@ impl MacosInputHook {
 
     /// Re-enables a `CGEventTap` if macOS disabled it due to timeout.
     pub fn handle_tap_disabled(&mut self) {
+        self.active = true;
         log::warn!("CGEventTap was disabled by macOS; re-enabling tap");
         // Invokes CGEventTapEnable(mach_port, true)
     }

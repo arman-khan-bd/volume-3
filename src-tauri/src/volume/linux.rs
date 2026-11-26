@@ -377,11 +377,8 @@ impl VolumeBackend for LinuxVolumeController {
                 current_name.clear();
                 current_vol = 1.0;
                 current_mute = false;
-            } else if line.starts_with("application.name = ") {
-                current_name = line
-                    .trim_start_matches("application.name = ")
-                    .trim_matches('"')
-                    .to_string();
+            } else if let Some(app_name) = line.strip_prefix("application.name = ") {
+                current_name = app_name.trim_matches('"').to_string();
             } else if line.starts_with("Mute: ") {
                 current_mute = line.ends_with("yes");
             } else if line.starts_with("Volume: ") {
