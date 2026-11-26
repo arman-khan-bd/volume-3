@@ -144,6 +144,7 @@ impl TimeProfile {
         }
     }
 
+    #[cfg_attr(not(target_os = "windows"), allow(clippy::unnecessary_wraps))]
     pub fn current_cap(&self) -> Option<f32> {
         #[cfg(target_os = "windows")]
         if self.enabled && self.is_active_at_hour(local_hour_now()) {

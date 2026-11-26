@@ -21,6 +21,7 @@ pub struct LinuxVolumeController {
 }
 
 impl LinuxVolumeController {
+    #[allow(clippy::unnecessary_wraps)] // Matches WindowsVolumeController::new signature
     pub fn new() -> Result<Self, String> {
         let tool = Self::detect_tool();
         log::info!("Detected Linux audio backend tool: {tool:?}");

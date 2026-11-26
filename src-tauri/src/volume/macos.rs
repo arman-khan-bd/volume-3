@@ -12,6 +12,7 @@ pub struct MacosVolumeController {
 }
 
 impl MacosVolumeController {
+    #[allow(clippy::unnecessary_wraps)] // Matches WindowsVolumeController::new signature
     pub fn new() -> Result<Self, String> {
         Ok(Self {
             subscribers: Arc::new(Mutex::new(Vec::new())),

@@ -32,7 +32,7 @@ impl LinuxInputHook {
         }
     }
 
-    /// Verifies access to /dev/input for optional advanced evdev backend.
+    /// Verifies access to `/dev/input` for optional advanced evdev backend.
     pub fn has_evdev_access() -> bool {
         std::fs::read_dir("/dev/input").is_ok()
     }
