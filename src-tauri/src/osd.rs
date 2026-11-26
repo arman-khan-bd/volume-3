@@ -187,12 +187,17 @@ impl OsdManager {
         let _ = Self::ensure_osd_window_on_main_thread(app, 390, 155, false);
     }
 
-    fn compute_position(app: &AppHandle, position: OsdPosition, win_w: i32, win_h: i32) -> (i32, i32) {
+    fn compute_position(
+        app: &AppHandle,
+        position: OsdPosition,
+        win_w: i32,
+        win_h: i32,
+    ) -> (i32, i32) {
         let monitor = app
             .primary_monitor()
             .ok()
             .flatten()
-            .or_else(|| app.available_monitors().ok().and_then(|mut m| m.drain(..).next()));
+            .or_else(|| app.available_monitors().ok()?.into_iter().next());
 
         let Some(m) = monitor else {
             return (80, 80);

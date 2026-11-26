@@ -108,10 +108,11 @@ unsafe extern "system" fn low_level_mouse_proc(
 
             let matched_zone = if let Ok(zones_guard) = state.zones.read() {
                 let res = hit_test(&zones_guard, px, py, ctrl, alt, shift, meta).cloned();
-                if res.is_some() {
-                    log::info!("MouseHook: wheel/click at ({px}, {py}) matched zone '{}'", res.as_ref().unwrap().name);
+                if let Some(ref zone) = res {
+                    log::info!("MouseHook: matched zone '{}' at ({px}, {py})", zone.name);
                 } else if msg == WM_MOUSEWHEEL {
-                    log::debug!("MouseHook: wheel at ({px}, {py}) did not match any zone (zones={})", zones_guard.len());
+                    let count = zones_guard.len();
+                    log::debug!("MouseHook: unmatched wheel ({px}, {py}), zones={count}");
                 }
                 res
             } else {

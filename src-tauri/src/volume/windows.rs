@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
+use crate::zones::VolumeTarget;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::{CloseHandle, PROPERTYKEY};
@@ -49,9 +51,6 @@ fn resolve_process_name(pid: u32) -> Option<String> {
         Some(friendly)
     }
 }
-
-use crate::volume::{clamp_volume, AppAudioSession, VolumeBackend};
-use crate::zones::VolumeTarget;
 
 type VolumeSubscriber = Box<dyn Fn(f32, bool) + Send + Sync>;
 

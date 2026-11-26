@@ -834,7 +834,7 @@ fn main() {
                         settings.start_at_login = true;
                         settings.autostart_initialized = true;
                         let _ = config::save_config(&settings);
-                        log::info!("Auto-start enabled automatically for current user (--minimized)");
+                        log::info!("Auto-start enabled for current user (--minimized)");
                     }
                     Err(err) => {
                         log::warn!("Could not register automatic startup: {err}");
