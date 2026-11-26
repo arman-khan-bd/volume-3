@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload PR build artifact (Windows)
         if: github.event_name == 'pull_request' && matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: volume-3-windows-debug
           path: src-tauri/target/debug/volume-3.exe
@@ -98,7 +98,7 @@ jobs:
 
       - name: Upload PR build artifact (macOS)
         if: github.event_name == 'pull_request' && matrix.os == 'macos-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: volume-3-macos-debug
           path: src-tauri/target/debug/volume-3
@@ -106,7 +106,7 @@ jobs:
 
       - name: Upload PR build artifact (Linux)
         if: github.event_name == 'pull_request' && startsWith(matrix.os, 'ubuntu')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: volume-3-linux-debug
           path: src-tauri/target/debug/volume-3
