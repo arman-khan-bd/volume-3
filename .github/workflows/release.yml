@@ -209,10 +209,17 @@ jobs:
             v*) ;;
             *) TAG="v$(node -p "require('./package.json').version")" ;;
           esac
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" all-os-installers/* --clobber
+            gh release edit "$TAG" \
+              --draft=false \
+              --target "${{ github.sha }}" \
+              --title "Volume 3 $TAG" \
+              --notes "Download Volume 3 installers for Windows (.exe, .msi, portable), Linux (.deb, .rpm, .AppImage), and macOS Universal (.dmg, .app.tar.gz)."
+          else
             gh release create "$TAG" \
+              all-os-installers/* \
               --target "${{ github.sha }}" \
               --title "Volume 3 $TAG" \
               --notes "Download Volume 3 installers for Windows (.exe, .msi, portable), Linux (.deb, .rpm, .AppImage), and macOS Universal (.dmg, .app.tar.gz)."
           fi
-          gh release upload "$TAG" all-os-installers/* --clobber
